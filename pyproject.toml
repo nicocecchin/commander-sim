@@ -1,0 +1,34 @@
+[project]
+name = "commander-sim"
+version = "0.1.0"
+description = "Headless Forge Commander simulation harness for decklist evaluation"
+requires-python = ">=3.11"
+dependencies = [
+    "platformdirs>=4",
+    "typer>=0.12",
+]
+
+[project.scripts]
+commander-sim = "commander_sim.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/commander_sim"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: slow tests that run Forge (deselect with -m 'not integration')"]
+addopts = "-m 'not integration'"
