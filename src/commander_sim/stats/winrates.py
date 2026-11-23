@@ -3,6 +3,7 @@
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
+from statistics import mean
 
 from commander_sim.forge.output import Outcome
 from commander_sim.stats.intervals import wilson_interval
@@ -18,6 +19,8 @@ class DeckStats:
     wins: int
     timeouts: int
     crashes: int
+    mean_win_turn: float | None = None  # real turns (every player's turn), averaged over wins
+    mean_win_rounds: float | None = None  # rounds, averaged over the same wins
 
     @property
     def decided(self) -> int:
@@ -55,6 +58,8 @@ def deck_stats(games: Iterable[GameRecord]) -> list[DeckStats]:
     """Per-deck results, best winrate first. Crashed games are infrastructure failures: they
     count toward `crashes` only, never as a loss."""
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    win_turns: dict[str, list[int]] = defaultdict(list)
+    win_rounds: dict[str, list[float]] = defaultdict(list)
     for game in games:
         for seat_number, seat in enumerate(game.seats, start=1):
             entry = counts[seat.deck]
@@ -63,9 +68,21 @@ def deck_stats(games: Iterable[GameRecord]) -> list[DeckStats]:
                 continue
             entry["appearances"] += 1
             entry["timeouts"] += game.outcome is Outcome.TIMEOUT
-            entry["wins"] += game.winner_seat == seat_number
+            if game.winner_seat == seat_number:
+                entry["wins"] += 1
+                if game.turns is not None and game.rounds is not None:
+                    win_turns[seat.deck].append(game.turns)
+                    win_rounds[seat.deck].append(game.rounds)
     stats = [
-        DeckStats(deck, c["appearances"], c["wins"], c["timeouts"], c["crashes"])
+        DeckStats(
+            deck,
+            c["appearances"],
+            c["wins"],
+            c["timeouts"],
+            c["crashes"],
+            mean(win_turns[deck]) if win_turns[deck] else None,
+            mean(win_rounds[deck]) if win_rounds[deck] else None,
+        )
         for deck, c in counts.items()
     ]
     return sorted(stats, key=lambda s: (-s.winrate, s.deck))

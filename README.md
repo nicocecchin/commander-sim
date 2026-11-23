@@ -84,6 +84,9 @@ uv run commander-sim merge all.sqlite runs/one/results.sqlite runs/two/results.s
 - `compare` gives the difference with a 95% interval and p-value, says how small a difference the
   sample can detect, and warns when the two decks did not face the same field or seats. About
   1000 decided games per deck are needed to resolve a 5-point difference.
+- Win length is shown as turns (every player's turn counted) and rounds (one pass around the
+  table). Both come from the full game log, because Forge's own `Turn N` result line is about
+  half the real turn count in games with more than 2 players.
 - Ratings are a Plackett-Luce fit on who won each pod ("expected winrate against three reference
   decks"), with bootstrap intervals.
 - `decks/playgroup.yaml` maps players to decks and labels the tables. Results always carry the

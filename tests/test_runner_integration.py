@@ -41,5 +41,7 @@ def test_two_parallel_tasks_are_stored(tmp_path: Path):
     assert store.completed_tasks(run_id) == {0, 1}
     assert store.outcome_counts().get(Outcome.CRASH, 0) == 0
     assert sum(store.outcome_counts().values()) == 2
+    for game in store.read_games():
+        assert game.turns and game.rounds and game.rounds <= game.turns
     assert len(list((tmp_path / "workers").glob("*/home/.forge"))) == 2
     store.close()

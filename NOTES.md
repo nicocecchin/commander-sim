@@ -20,7 +20,7 @@ java -Xmx1536m -Duser.home=<worker home> -jar forge-gui-desktop-2.0.16-jar-with-
   `-s` = RNG seed, `-a` = AI profile per player, `-mc` = Monte Carlo AI refinement (off by
   default in sim), `-c` = per-match clock in seconds (default 120).
 - Without `-q` the output is the full game log (2000+ lines for one game). With `-q` only the
-  result block is printed. Both start with ~20 lines of noise ("The card ... was not assigned to
+  result block is printed (no per-turn lines, hence no real turn count). Both start with ~20 lines of noise ("The card ... was not assigned to
   any set"); the parser ignores everything it does not recognise.
 - `-D` must be an absolute path to a folder containing the deck files named in `-d`.
 - Exit code is 0 even on failures (missing deck, wrong cwd); success is judged by parsing the
@@ -45,12 +45,18 @@ Game Result: Game 1 ended in 87011 ms. Ai(4)-<deck> has won!
   given. With several games the block from `Game Outcome` to `Game Result` repeats.
 - Player label is `Ai(<seat>)-<deck name>`, where the deck name is the `Name=` in the `.dck`
   metadata, not the file name.
-- Turn count is the global turn counter (all players), so a 4-player game of 34 turns is about
-  8 rounds.
-- **Timeout trap:** when `-c` expires Forge prints `Stopping slow match as draw`, then declares
-  **every** player "has won" and names an arbitrary seat in `Game Result`. A timeout must be
-  detected from the `Stopping slow match` line, never from the winner lines. The parser does this
-  (`forge/output.py`).
+- **`Game Outcome: Turn N` (the only turn figure in `-q` output) is about half of the real turn
+  counter.** Checked against the `Turn: Turn k (...)` lines of full logs in 4 games: 87 -> 44,
+  42 -> 21, 53 -> 27, 68 -> 34. Cause (Forge source, `GameLogFormatter`): it prints
+  `ceil(lastTurnNumber / 2.0)` with the comment "turn number counted from the starting player",
+  which is a round count only in 2-player games. (Read from the current master branch on GitHub;
+  the numbers match 2.0.16.)
+- **So the runner does not use `-q`.** It parses the full log (about 130 KB per game): the last
+  `Turn: Turn k` is the real turn count (every player's turn counted), and rounds are counted from
+  the seat order of the `Turn:` lines (a new round starts when the order wraps past the starting
+  player, so eliminated players do not inflate it; an extra turn counts as a new round). A seeded
+  game gives the identical result with and without `-q` and takes the same time. The sim prints
+  the whole log only when the game ends.
 - Elimination order is **not** available in `-q` mode (loss lines are listed by seat). It would
   have to be parsed from the full log; not done.
 - Win-by-commander-damage, decking etc. only appear in the loss reason text; *unverified* whether
@@ -121,7 +127,7 @@ Forge launch, 24 games (a real job would use 4 per launch, see `jobs/playgroup-s
 |---|---|
 | Total RSS of the 2 JVMs | mean 1.46 GB, max 1.69 GB (about 0.85 GB each) |
 | Game duration | mean 51 s, median 38 s, range 23 - 188 s |
-| Game length | mean 27 turns (global counter), range 18 - 41 |
+| Game length | mean 27 turns as printed by Forge (about 54 real turns), range 18 - 41 |
 | Throughput | 16 games in 444 s with 2 workers: about 130 games/hour |
 | CPU | an end-to-end test with 2 workers used about 4.5 cores of CPU time, i.e. a JVM can use ~2 cores (JIT/GC) |
 | Seat balance | each deck sat in each seat exactly 6 times in 24 games |
@@ -172,7 +178,7 @@ Forge's `forge.log` showed no unsupported-card messages.
 | Measure | Result |
 |---|---|
 | Game duration | mean 252 s, median 151 s, range 20 - 913 s |
-| Game length | mean 25 turns (global counter), range 15 - 30 |
+| Game length | mean 25 turns as printed by Forge (about 50 real turns), range 15 - 30 |
 | Throughput | 8 games in 19 min with 2 workers: about 25 games/hour |
 | CPU | 3075 s CPU time in 1135 s wall: about 2.7 cores for 2 workers |
 
@@ -216,3 +222,28 @@ Written for anyone consuming the results database.
 - A tiny real A/B (16 games on the starter decks, 2 workers, about 8 minutes) exercised the whole
   path. Seat winrates in it were 25 / 19 / 31 / 25% for seats 1-4 over 16 games each: far too few
   games to say anything about seat advantage.
+
+## Why games are slow (profiled in milestone 4)
+
+One slow smoke-run game was replayed with its seed (853 s versus 913 s the first time, same winner,
+27 turns as printed by Forge, 53 real turns, about 14 rounds): slowness is a property of the game, not of the machine. Findings:
+
+- A game runs on **one thread** (about 1 core). GC is not the cause: pauses total 2 s in 636 s (the
+  GC log uses decimal commas, so `1,630ms` is 1.6 ms).
+- In the last third of the game, 98% of 87 thread-dump samples were in the AI's priority loop:
+  `AiController.chooseSpellAbilityToPlay` -> `ComputerUtilAbility.getSpellAbilities` ->
+  `GameActionUtil.getAlternativeCosts` -> `GameAction.checkStaticAbilities`. For every candidate
+  action the AI asks for, Forge recomputes the continuous effects of the whole board
+  (`StaticAbilityContinuous`, `CardProperty.cardHasProperty` was the top frame in 71% of samples).
+  Cost therefore grows with board size times number of candidate actions, and every player's
+  priority passes pay it.
+- Earlier in the game Forge printed its own "AI eval thread at timeout" stack: the AI was inside
+  nested combat prediction (`predictNextCombatsRemainingLife` -> `AiAttackController` ->
+  `AiBlockController.makeChumpBlocks`, recursive), triggered by deciding whether to cast a pump
+  spell. That is the per-decision AI time limit that produces the `TimeoutException` traces.
+- Forge sim prints the game log only when the game ends, so progress cannot be watched live.
+- Forge has a `MATCH_AI_TIMEOUT` preference (name seen in the jar; default and file key not yet
+  checked) that bounds time per AI decision. Lowering it might speed games up at the price of
+  weaker play; not tried.
+- Only one game was profiled in depth; "big boards of tokens cause it" is the likely but unproven
+  explanation of the 45x spread between games.

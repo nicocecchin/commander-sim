@@ -48,7 +48,8 @@ def _play_task(
             continue
         return TaskRecord(task.index, task.seed, task.seats, hashes, output.games, attempt)
     crashes = tuple(
-        GameResult(number, Outcome.CRASH, None, None, None) for number in range(1, task.games + 1)
+        GameResult(number, Outcome.CRASH, None, None, None, None)
+        for number in range(1, task.games + 1)
     )
     return TaskRecord(task.index, task.seed, task.seats, hashes, crashes, MAX_ATTEMPTS, error)
 

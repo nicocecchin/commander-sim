@@ -28,7 +28,7 @@ def init(store: ResultStore, job: str = "{}", hashes=HASHES, forge: str = FORGE)
 
 
 def win(number: int, seat: int) -> GameResult:
-    return GameResult(number, Outcome.WIN, seat, turns=30, duration_ms=1000)
+    return GameResult(number, Outcome.WIN, seat, turns=30, rounds=8, duration_ms=1000)
 
 
 def record(index: int = 0, games=None, error: str | None = None) -> TaskRecord:
@@ -64,7 +64,7 @@ def test_saved_games_are_read_back_with_seats_hashes_and_winner(store: ResultSto
 
 def test_failed_task_stores_crashes_and_is_replaced_by_a_retry(store: ResultStore):
     run_id = init(store)
-    crashes = (GameResult(1, Outcome.CRASH, None, None, None),)
+    crashes = (GameResult(1, Outcome.CRASH, None, None, None, None),)
     store.save_task(record(0, crashes, error="boom"), run_id)
     assert store.completed_tasks(run_id) == set()
     assert store.outcome_counts() == {Outcome.CRASH: 1}
@@ -78,7 +78,7 @@ def test_failed_task_stores_crashes_and_is_replaced_by_a_retry(store: ResultStor
 
 def test_timeouts_have_no_winner(store: ResultStore):
     run_id = init(store)
-    timeout = GameResult(1, Outcome.TIMEOUT, None, turns=6, duration_ms=10)
+    timeout = GameResult(1, Outcome.TIMEOUT, None, turns=6, rounds=2, duration_ms=10)
     store.save_task(record(0, (timeout, win(2, 1))), run_id)
     assert store.outcome_counts() == {Outcome.TIMEOUT: 1, Outcome.WIN: 1}
     assert [g.winner for g in store.read_games()][0] is None

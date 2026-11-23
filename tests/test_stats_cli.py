@@ -16,7 +16,7 @@ def make_db(path: Path, name: str = "job", wins_for_seat_one: int = 6, games: in
     store = ResultStore(path)
     run_id = store.init_run(name, name, "2.0.16", HASHES, {"a.dck": ["Toxic Deluge"]})
     results = tuple(
-        GameResult(n, Outcome.WIN, 1 if n <= wins_for_seat_one else 2, 20, 1000)
+        GameResult(n, Outcome.WIN, 1 if n <= wins_for_seat_one else 2, 20, 5, 1000)
         for n in range(1, games + 1)
     )
     record = TaskRecord(0, 1, DECKS, tuple(HASHES.values()), results, attempts=1)
@@ -36,6 +36,8 @@ def test_stats_shows_tables_ai_weakness_and_the_forge_ai_disclaimer(tmp_path: Pa
     assert "a" in result.output and "75.0%" in result.output
     assert "Toxic Deluge" in result.output
     assert "piloted by the Forge AI" in result.output
+    assert "20.0 / 5.0" in result.output
+    assert "one pass around the table" in result.output
 
 
 def test_stats_uses_owner_names_from_the_playgroup_file(tmp_path: Path):

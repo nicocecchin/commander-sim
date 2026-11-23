@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS games (
     outcome TEXT NOT NULL,
     winner_seat INTEGER,
     turns INTEGER,
+    rounds INTEGER,
     duration_ms INTEGER,
     UNIQUE (run_id, task_index, game_number)
 );
@@ -101,6 +102,7 @@ class GameRecord:
     outcome: Outcome
     winner_seat: int | None
     turns: int | None
+    rounds: int | None
     duration_ms: int | None
     seats: tuple[Seat, ...]
 
@@ -200,7 +202,7 @@ class ResultStore:
             for game in record.games:
                 cursor = self._db.execute(
                     "INSERT INTO games (run_id, task_index, game_number, seed, outcome,"
-                    " winner_seat, turns, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    " winner_seat, turns, rounds, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         run_id,
                         record.task_index,
@@ -209,6 +211,7 @@ class ResultStore:
                         game.outcome.value,
                         game.winner_seat,
                         game.turns,
+                        game.rounds,
                         game.duration_ms,
                     ),
                 )
@@ -254,12 +257,14 @@ class ResultStore:
         ):
             seats.setdefault(game_id, []).append(Seat(deck, deck_hash, Pilot(pilot)))
         rows = self._db.execute(
-            "SELECT id, run_id, task_index, game_number, outcome, winner_seat, turns, duration_ms"
-            " FROM games ORDER BY id"
+            "SELECT id, run_id, task_index, game_number, outcome, winner_seat, turns, rounds,"
+            " duration_ms FROM games ORDER BY id"
         )
         return [
-            GameRecord(run_id, task, number, Outcome(outcome), winner, turns, ms, tuple(seats[gid]))
-            for gid, run_id, task, number, outcome, winner, turns, ms in rows
+            GameRecord(
+                run_id, task, number, Outcome(outcome), winner, turns, rounds, ms, tuple(seats[gid])
+            )
+            for gid, run_id, task, number, outcome, winner, turns, rounds, ms in rows
         ]
 
     def import_runs(self, other: "ResultStore") -> list[str]:
@@ -278,11 +283,11 @@ class ResultStore:
                     self._db.execute(f"INSERT INTO {table} VALUES ({marks})", row)
             for old_id, *game in other._db.execute(
                 "SELECT id, run_id, task_index, game_number, seed, outcome, winner_seat, turns,"
-                " duration_ms FROM games ORDER BY id"
+                " rounds, duration_ms FROM games ORDER BY id"
             ).fetchall():
                 new_id = self._db.execute(
                     "INSERT INTO games (run_id, task_index, game_number, seed, outcome,"
-                    " winner_seat, turns, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    " winner_seat, turns, rounds, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     game,
                 ).lastrowid
                 self._db.executemany(

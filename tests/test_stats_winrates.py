@@ -47,3 +47,14 @@ def test_deck_versions_flags_changed_card_lists():
     games = [make_game(POD, 1, hashes={"a": "v1"}), make_game(POD, 1, hashes={"a": "v2"})]
     assert deck_versions(games) == {"a": {"v1", "v2"}}
     assert deck_versions([make_game(POD, 1)]) == {}
+
+
+def test_win_length_is_reported_as_turns_and_rounds():
+    games = [
+        make_game(POD, 1),
+        make_game(POD, 1),
+        make_game(POD, 2),
+    ]  # each lasted 20 turns, 5 rounds
+    a = by_deck(games)["a"]
+    assert (a.mean_win_turn, a.mean_win_rounds) == (20, 5.0)
+    assert by_deck(games)["c"].mean_win_turn is None

@@ -29,6 +29,12 @@ def _interval(interval: tuple[float, float]) -> str:
     return f"{_percent(interval[0])} - {_percent(interval[1])}"
 
 
+def _win_length(stats: DeckStats) -> str:
+    if stats.mean_win_turn is None or stats.mean_win_rounds is None:
+        return "-"
+    return f"{stats.mean_win_turn:.1f} / {stats.mean_win_rounds:.1f}"
+
+
 def _label(deck: str, owners: dict[str, str]) -> str:
     name = deck.removesuffix(".dck")
     return f"{name} ({owners[deck]})" if deck in owners else name
@@ -54,13 +60,22 @@ def load_results(paths: list[Path]) -> tuple[list[RunInfo], list[GameRecord]]:
 
 
 def deck_table(stats: list[DeckStats], owners: dict[str, str]) -> Table:
-    table = Table("Deck", "Games", "Wins", "Winrate (95% CI)", "Timeouts", "Crashes")
+    table = Table(
+        "Deck",
+        "Games",
+        "Wins",
+        "Winrate (95% CI)",
+        "Win length: turns / rounds",
+        "Timeouts",
+        "Crashes",
+    )
     for s in stats:
         table.add_row(
             _label(s.deck, owners),
             str(s.decided),
             str(s.wins),
             f"{_percent(s.winrate)}  [{_interval(s.interval)}]",
+            _win_length(s),
             f"{s.timeouts} ({_percent(s.timeout_rate)})",
             str(s.crashes),
         )
@@ -89,6 +104,10 @@ def print_footer(runs: list[RunInfo], games: list[GameRecord], owners: dict[str,
         console.print("\nCards Forge says its AI plays badly:")
         for note in notes:
             console.print(f"  {note}")
+    console.print(
+        "\nWin length: a turn is one player's turn, a round is one pass around the table "
+        "(eliminated players skip theirs)."
+    )
     console.print(f"\n{DISCLAIMER}")
 
 

@@ -38,7 +38,8 @@ def store(tmp_path: Path):
 
 def first_seat_wins(request: SimRequest, home: Path, cancel: threading.Event) -> SimOutput:
     games = tuple(
-        GameResult(n, Outcome.WIN, 1, turns=20, duration_ms=5) for n in range(1, request.games + 1)
+        GameResult(n, Outcome.WIN, 1, turns=20, rounds=5, duration_ms=5)
+        for n in range(1, request.games + 1)
     )
     return SimOutput(request.seed, request.decks, games)
 

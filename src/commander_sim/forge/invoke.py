@@ -73,7 +73,6 @@ def build_command(forge_dir: Path, request: SimRequest, user_home: Path) -> list
         str(request.games),
         "-c",
         str(request.game_timeout_seconds),
-        "-q",
     ]
     if request.seed is not None:
         command += ["-s", str(request.seed)]

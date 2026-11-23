@@ -30,7 +30,7 @@ def test_build_command_orders_decks_as_seats_and_adds_seed(forge_dir: Path, tmp_
     assert command[command.index("-s") + 1] == "7"
     assert command[command.index("-n") + 1] == "3"
     assert f"-Duser.home={tmp_path / 'home'}" in command
-    assert "-q" in command
+    assert "-q" not in command
 
 
 def test_build_command_omits_seed_when_unset(forge_dir: Path, tmp_path: Path):
