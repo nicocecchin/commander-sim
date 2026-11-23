@@ -27,6 +27,20 @@ uv sync
 uv run commander-sim forge setup   # downloads the pinned Forge release (~300 MB) into vendor/forge/
 ```
 
+## Running simulations
+
+A job file (see `jobs/starter-smoke.yaml`) names a folder of `.dck` decks, the pod of decks that
+play each other, and the number of games. Seat orders are rotated so every deck plays every seat
+equally often (use a game count that is a multiple of 24 x `games_per_task` for a 4-deck pod).
+
+```bash
+uv run commander-sim run jobs/starter-smoke.yaml
+```
+
+Results go to `runs/<job name>/results.sqlite`. Press Ctrl+C to stop; running the same command
+again resumes where it left off. The worker count is `min(cores - 1, RAM budget / heap)`; set
+`workers.max` or `workers.ram_budget_gb` in the job file to override it.
+
 ## Tests
 
 ```bash

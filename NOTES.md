@@ -106,6 +106,31 @@ about 6 GB free that is 3-4 workers. At about 60 s per game per worker, 1000 gam
 
 ## Open items
 
-- Behaviour on a Forge crash / OOM / hung JVM (milestone 2).
-- Windows/macOS user-dir isolation (see above).
+- Behaviour of a real Forge crash / OOM (the runner's retry path is unit-tested with a fake
+  Forge; only a manual `kill -9` of the whole run has been exercised for real).
+- Windows/macOS user-dir isolation (see above). The runner also sets `APPDATA`/`LOCALAPPDATA`
+  on Windows; untested there.
 - Whether a genuine draw can occur besides timeouts.
+
+## Runner measurements (milestone 2)
+
+Dev laptop (12 threads, ~5 GB free RAM), starter decks, 2 workers, `-Xmx1536m`, one game per
+Forge launch, 24 games (96 would be 4 per launch; see `jobs/starter-smoke.yaml`):
+
+| Measure | Result |
+|---|---|
+| Total RSS of the 2 JVMs | mean 1.46 GB, max 1.69 GB (about 0.85 GB each) |
+| Game duration | mean 51 s, median 38 s, range 23 - 188 s |
+| Game length | mean 27 turns (global counter), range 18 - 41 |
+| Throughput | 16 games in 444 s with 2 workers: about 130 games/hour |
+| CPU | an end-to-end test with 2 workers used about 4.5 cores of CPU time, i.e. a JVM can use ~2 cores (JIT/GC) |
+| Seat balance | each deck sat in each seat exactly 6 times in 24 games |
+| Outcomes | 24 wins, 0 timeouts, 0 crashes |
+
+- The CPU number suggests `cores - 1` workers may oversubscribe the CPU. Measure throughput with
+  more workers on the run box before trusting the default formula.
+- Interrupt and resume were exercised for real: `kill -9` of the runner (orphaned JVMs killed by
+  hand) and Ctrl+C. After either, rerunning the same job skipped finished tasks and completed the
+  rest. Ctrl+C kills the JVMs within a few seconds and leaves no orphan processes.
+- Starting a Python process in the background of a non-interactive shell leaves SIGINT ignored,
+  so Ctrl+C does nothing there; this only affects test harnesses, not interactive use.

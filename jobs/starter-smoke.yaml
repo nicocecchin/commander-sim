@@ -1,0 +1,13 @@
+# 96 games = every seat order (24) x 4 games per Forge launch.
+name: starter-smoke
+decks_dir: ../decks/sample
+pod: [black_01.dck, blue_01.dck, green_01.dck, red_01.dck]
+games: 96
+games_per_task: 4
+seed: 1
+forge:
+  game_timeout_seconds: 3600
+  heap_mb: 1536
+workers:
+  max: null
+  ram_budget_gb: null

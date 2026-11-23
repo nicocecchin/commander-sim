@@ -17,6 +17,7 @@ _TIMEOUT_MARKER = "Stopping slow match as draw"
 class Outcome(StrEnum):
     WIN = "win"
     TIMEOUT = "timeout"
+    CRASH = "crash"  # Forge never reports this; the runner records it when a launch fails
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,8 @@ class GameResult:
     number: int
     outcome: Outcome
     winner_seat: int | None
-    turns: int
-    duration_ms: int
+    turns: int | None
+    duration_ms: int | None
 
 
 @dataclass(frozen=True)
