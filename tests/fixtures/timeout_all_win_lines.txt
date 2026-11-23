@@ -1,0 +1,13 @@
+Simulation mode
+Ai(1)-Starter Commander - Black vs Ai(2)-Starter Commander - Blue vs Ai(3)-Starter Commander - Green vs Ai(4)-Starter Commander - Red - one game of Commander
+Stopping slow match as draw
+Game Outcome: Match Duration 0m : 08s
+Game Outcome: Turn 6
+Game Outcome: Ai(1)-Starter Commander - Black has won because all opponents have lost
+Game Outcome: Ai(2)-Starter Commander - Blue has won because all opponents have lost
+Game Outcome: Ai(3)-Starter Commander - Green has won because all opponents have lost
+Game Outcome: Ai(4)-Starter Commander - Red has won because all opponents have lost
+Match Result: Ai(1)-Starter Commander - Black: 0 Ai(2)-Starter Commander - Blue: 1 Ai(3)-Starter Commander - Green: 0 Ai(4)-Starter Commander - Red: 0 
+
+Game Result: Game 1 ended in 10104 ms. Ai(2)-Starter Commander - Blue has won!
+

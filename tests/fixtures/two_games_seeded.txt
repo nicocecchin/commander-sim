@@ -1,0 +1,22 @@
+Simulation mode
+Ai(1)-Starter Commander - Black vs Ai(2)-Starter Commander - Blue vs Ai(3)-Starter Commander - Green vs Ai(4)-Starter Commander - Red - two games of Commander seed 5
+Game Outcome: Match Duration 1m : 17s
+Game Outcome: Turn 35
+Game Outcome: Ai(1)-Starter Commander - Black has won because all opponents have lost
+Game Outcome: Ai(2)-Starter Commander - Blue has lost because life total reached 0
+Game Outcome: Ai(3)-Starter Commander - Green has lost because life total reached 0
+Game Outcome: Ai(4)-Starter Commander - Red has lost because life total reached 0
+Match Result: Ai(1)-Starter Commander - Black: 1 Ai(2)-Starter Commander - Blue: 0 Ai(3)-Starter Commander - Green: 0 Ai(4)-Starter Commander - Red: 0 
+
+Game Result: Game 1 ended in 78753 ms. Ai(1)-Starter Commander - Black has won!
+
+Game Outcome: Match Duration 0m : 34s
+Game Outcome: Turn 31
+Game Outcome: Ai(1)-Starter Commander - Black has won because all opponents have lost
+Game Outcome: Ai(2)-Starter Commander - Blue has lost because life total reached 0
+Game Outcome: Ai(3)-Starter Commander - Green has lost because life total reached 0
+Game Outcome: Ai(4)-Starter Commander - Red has lost because life total reached 0
+Match Result: Ai(1)-Starter Commander - Black: 2 Ai(2)-Starter Commander - Blue: 0 Ai(3)-Starter Commander - Green: 0 Ai(4)-Starter Commander - Red: 0 
+
+Game Result: Game 2 ended in 34827 ms. Ai(1)-Starter Commander - Black has won!
+
