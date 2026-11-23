@@ -247,3 +247,18 @@ One slow smoke-run game was replayed with its seed (853 s versus 913 s the first
   weaker play; not tried.
 - Only one game was profiled in depth; "big boards of tokens cause it" is the likely but unproven
   explanation of the 45x spread between games.
+
+### Speed-up attempts
+
+- **Known upstream problem:** Forge issue #6149 ("Permanent blanket effects massively slow down AI
+  response time", open since 2024) describes this: cards with board-wide continuous effects (Urborg,
+  Yavimaya, Painter's Servant, Mycosynth Lattice, Teferi...) make the AI extremely slow. No commit
+  since 2.0.16 (checked 2026-11-24) touches the hot path (`GameActionUtil.getAlternativeCosts`,
+  which recomputes all static abilities when any static ability affects spells on the stack).
+  Which card slowed the profiled game is unknown: a crude script search of the 11 playgroup decks
+  found no known offender.
+- **JVM flags** (same seeded 81-second game, 4 JVMs at once, same winner every time): default G1
+  107 s, `-XX:+UseParallelGC -Xmn700m` 104 s, `-XX:+UseSerialGC -Xmn700m` 112 s,
+  `-XX:-TieredCompilation` 95 s. Differences are within noise except possibly `-XX:-TieredCompilation`
+  (about 12% faster); not adopted. GC is not the bottleneck.
+- Per-game speed cannot be improved without changing Forge; throughput scales with worker count.
