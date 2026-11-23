@@ -10,6 +10,7 @@ _RELEASE_URL = (
     "https://github.com/Card-Forge/forge/releases/download/forge-{v}/forge-installer-{v}.tar.bz2"
 )
 _CHUNK = 1 << 20
+DEFAULT_VENDOR_DIR = Path("vendor") / "forge"
 
 
 @dataclass(frozen=True)

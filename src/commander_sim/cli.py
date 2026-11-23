@@ -7,7 +7,9 @@ import typer
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeRemainingColumn
 
 from commander_sim.config import load_job
-from commander_sim.forge.install import PINNED_RELEASE, install_forge
+from commander_sim.decks.cli import check_decks, decks_app, load_index
+from commander_sim.decks.dck_format import read_dck
+from commander_sim.forge.install import DEFAULT_VENDOR_DIR, PINNED_RELEASE, install_forge
 from commander_sim.forge.invoke import SimRequest, run_sim
 from commander_sim.forge.output import Outcome, SimOutput
 from commander_sim.runner.executor import run_job
@@ -18,8 +20,8 @@ from commander_sim.storage.results import ResultStore
 app = typer.Typer(no_args_is_help=True, help="Headless Forge Commander simulation harness.")
 forge_app = typer.Typer(no_args_is_help=True, help="Manage the local Forge installation.")
 app.add_typer(forge_app, name="forge")
+app.add_typer(decks_app, name="decks")
 
-DEFAULT_VENDOR_DIR = Path("vendor") / "forge"
 DEFAULT_RUNS_DIR = Path("runs")
 RESULTS_FILE = "results.sqlite"
 
@@ -49,6 +51,7 @@ def run(
     job_file: Path,
     runs_dir: Path = DEFAULT_RUNS_DIR,
     vendor_dir: Path = DEFAULT_VENDOR_DIR,
+    allow_invalid: bool = False,
 ) -> None:
     """Run a job file. Running the same job again resumes it."""
     spec = load_job(job_file)
@@ -56,6 +59,11 @@ def run(
     forge_dir = vendor_dir / forge_version
     run_dir = runs_dir / spec.name
     workers = workers_for(spec)
+
+    pod_decks = [read_dck(spec.decks_dir / name) for name in spec.pod]
+    if not check_decks(pod_decks, load_index(vendor_dir)) and not allow_invalid:
+        typer.secho("Refusing to run invalid decks (use --allow-invalid).", fg=typer.colors.RED)
+        raise typer.Exit(1)
 
     if warning := balance_warning(spec):
         typer.secho(f"Warning: {warning}", fg=typer.colors.YELLOW)

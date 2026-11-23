@@ -115,7 +115,7 @@ about 6 GB free that is 3-4 workers. At about 60 s per game per worker, 1000 gam
 ## Runner measurements (milestone 2)
 
 Dev laptop (12 threads, ~5 GB free RAM), starter decks, 2 workers, `-Xmx1536m`, one game per
-Forge launch, 24 games (96 would be 4 per launch; see `jobs/starter-smoke.yaml`):
+Forge launch, 24 games (a real job would use 4 per launch, see `jobs/playgroup-smoke.yaml`):
 
 | Measure | Result |
 |---|---|
@@ -134,3 +134,55 @@ Forge launch, 24 games (96 would be 4 per launch; see `jobs/starter-smoke.yaml`)
   rest. Ctrl+C kills the JVMs within a few seconds and leaves no orphan processes.
 - Starting a Python process in the background of a non-interactive shell leaves SIGINT ignored,
   so Ctrl+C does nothing there; this only affects test harnesses, not interactive use.
+
+## Card database and decks (milestone 3)
+
+- Card scripts live in `res/cardsfolder/cardsfolder.zip` (about 35k files, one per card).
+  `forge/cards.py` indexes them in about 7 s. Format: `Key:Value` lines, faces separated by a
+  line `ALTERNATE`. Useful keys: `Name`, `ManaCost`, `Types`, `PT`, `Colors` (colour indicator),
+  `K:` keywords, `Oracle`, `AlternateMode`, `AI:RemoveDeck:<All|Random|NonCommander>`.
+- **Deck-file card names:** split cards (and rooms) are written `Fire // Ice`; adventure, modal
+  and transforming cards use the front face name only (`Bonecrusher Giant`). The importer rewrites
+  names to this form. Set codes in `.dck` lines are optional; we omit them.
+- `AI:RemoveDeck:All` marks cards Forge's own deck builders exclude because its AI handles them
+  badly. It does not stop the AI playing them when they are in a deck, so we report them as a
+  warning ("played badly by its AI"). Unflagged cards may be handled badly too.
+- **Commander eligibility** rule used by the validator: legendary creature, legendary Vehicle or
+  Spacecraft with power and toughness, "can be your commander" in the Oracle text, or a
+  Background. Pairs need a partner-style keyword (`K:Partner*`, `Choose a Background`,
+  `Doctor's companion`) on both. The TMNT precon pairs Leonardo and Michelangelo through
+  `Partner:Character select`.
+- **Forge ships the playgroup's decks.** `res/quest/commanderprecons/*.dck` holds 184 Commander
+  precon decklists up to the 2026 sets, including all 11 of the group's decks. Stock lists only:
+  edited decks must be imported from an export.
+- The text parsers were written from the known shapes of plain, Moxfield and Archidekt exports
+  (counts, `(SET) number`, `[Category{top}]`, `*F*` and `^tag^` markers) and have not yet been
+  tested on real exports. A Moxfield export with no commander header is handled by treating a
+  final blank-line-separated block of one or two commander-eligible cards as the commanders.
+- Colour identity is derived from mana costs, colour indicators, rules-text symbols and basic
+  land types. Faces that copy another card's face (`CopyFaceFrom`, e.g. Bind // Liberate) are not
+  resolved, so such cards can only be under-reported. It is a warning, not an error.
+
+## Real precon speed (milestone 3 smoke run)
+
+4 playgroup precons (Turtle Power!, Multiverse Reforged, Keen Engineering, Lorehold Spirit),
+8 games, 2 workers, one game per launch, dev laptop. Outcomes: 8 wins, 0 timeouts, 0 crashes;
+Forge's `forge.log` showed no unsupported-card messages.
+
+| Measure | Result |
+|---|---|
+| Game duration | mean 252 s, median 151 s, range 20 - 913 s |
+| Game length | mean 25 turns (global counter), range 15 - 30 |
+| Throughput | 8 games in 19 min with 2 workers: about 25 games/hour |
+| CPU | 3075 s CPU time in 1135 s wall: about 2.7 cores for 2 workers |
+
+**Real precons are about 5x slower than Forge's starter decks**, and durations vary 45x between
+games. Long games are not long in turns; they are slow turns (AI deliberation on busy boards).
+Plan capacity from the mean: 1000 games cost roughly 70 worker-hours, i.e. about 35 h on 2 laptop
+workers or about 7 h on 10 workers. The `game_timeout_seconds` default (3600) was never reached;
+the slowest game took 913 s.
+
+`forge.log` also contained 16 `java.util.concurrent.TimeoutException` stack traces in these 8 games,
+thrown from `AiController.chooseSpellAbilitiesToPlayFromList`. This is Forge's own per-decision
+AI time limit, not a crash: the AI abandons that decision and carries on, so very busy boards make
+it play worse. It is separate from the `-c` match clock and not visible in stdout.

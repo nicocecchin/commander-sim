@@ -27,15 +27,36 @@ uv sync
 uv run commander-sim forge setup   # downloads the pinned Forge release (~300 MB) into vendor/forge/
 ```
 
+## Decks
+
+Decks live as Forge `.dck` files (`decks/playgroup/` holds the playgroup's precons).
+
+```bash
+# Convert a Moxfield / Archidekt / plain-text export (paste the export into a text file first)
+uv run commander-sim decks import my-list.txt --name "My Deck" --out-dir decks/imported
+# Copy one of the precon lists that ship with Forge
+uv run commander-sim decks import-precon "Temur Roar" "Counter Blitz" --out-dir decks/playgroup
+# Check decks without running anything (.dck files, folders, or text lists)
+uv run commander-sim decks validate decks/playgroup
+```
+
+Validation errors: unknown cards (with suggestions), wrong deck size, missing or illegal
+commander, duplicates. Warnings: colour identity and cards Forge flags as badly played by its AI.
+Loading Forge's card database takes about 7 seconds per command.
+
 ## Running simulations
 
-A job file (see `jobs/starter-smoke.yaml`) names a folder of `.dck` decks, the pod of decks that
+A job file (see `jobs/playgroup-smoke.yaml`) names a folder of `.dck` decks, the pod of decks that
 play each other, and the number of games. Seat orders are rotated so every deck plays every seat
 equally often (use a game count that is a multiple of 24 x `games_per_task` for a 4-deck pod).
 
 ```bash
-uv run commander-sim run jobs/starter-smoke.yaml
+uv run commander-sim run jobs/playgroup-smoke.yaml
 ```
+
+Every deck in the pod is validated first and the run is refused if one is invalid (add
+`--allow-invalid` to override). Warnings, such as cards Forge says its AI plays badly, are always
+shown.
 
 Results go to `runs/<job name>/results.sqlite`. Press Ctrl+C to stop; running the same command
 again resumes where it left off. The worker count is `min(cores - 1, RAM budget / heap)`; set
