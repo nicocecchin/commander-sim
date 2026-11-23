@@ -1,0 +1,21 @@
+# All 11 playgroup decks: every 4-deck pod (330) in all 4 seat rotations, 1 game each.
+# 1320 games is one full cycle. Real games average about 4 minutes of worker time.
+name: playgroup-league
+decks_dir: ../decks/playgroup
+matchup:
+  kind: league
+  decks:
+    - keen-engineering.dck
+    - witherbloom-pestilence.dck
+    - counter-intelligence.dck
+    - prismari-artistry.dck
+    - lorehold-spirit.dck
+    - world-shaper.dck
+    - silverquill-influence.dck
+    - turtle-power.dck
+    - counter-blitz.dck
+    - multiverse-reforged.dck
+    - temur-roar.dck
+games: 1320
+games_per_task: 1
+seed: 1

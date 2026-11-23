@@ -71,7 +71,10 @@ def test_run_refuses_invalid_decks_before_launching_forge(tmp_path: Path, vendor
     write_dck(valid_deck("A"), tmp_path / "a.dck")
     write_dck(invalid_deck("B"), tmp_path / "b.dck")
     job = tmp_path / "job.yaml"
-    job.write_text("name: j\ndecks_dir: .\npod: [a.dck, b.dck]\ngames: 2\n", encoding="utf-8")
+    job.write_text(
+        "name: j\ndecks_dir: .\nmatchup: {kind: pod, decks: [a.dck, b.dck]}\ngames: 2\n",
+        encoding="utf-8",
+    )
     result = runner.invoke(
         app,
         ["run", str(job), "--runs-dir", str(tmp_path / "runs"), "--vendor-dir", str(vendor_dir)],

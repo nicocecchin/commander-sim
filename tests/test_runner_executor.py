@@ -11,10 +11,22 @@ from commander_sim.runner.plan import plan_tasks
 from commander_sim.storage.results import ResultStore
 
 POD = ("a.dck", "b.dck", "c.dck", "d.dck")
+HASHES = {deck: f"hash-{deck}" for deck in POD}
+
+
+def init_run(store: ResultStore, spec: JobSpec) -> str:
+    return store.init_run(spec.name, spec.model_dump_json(), "2.0.16", HASHES, {})
 
 
 def make_spec(games: int = 8) -> JobSpec:
-    return JobSpec(name="t", decks_dir=".", pod=POD, games=games, games_per_task=4, seed=1)
+    return JobSpec(
+        name="t",
+        decks_dir=".",
+        matchup={"kind": "pod", "decks": POD},
+        games=games,
+        games_per_task=4,
+        seed=1,
+    )
 
 
 @pytest.fixture
@@ -31,16 +43,22 @@ def first_seat_wins(request: SimRequest, home: Path, cancel: threading.Event) ->
     return SimOutput(request.seed, request.decks, games)
 
 
-def run(store: ResultStore, tmp_path: Path, simulate, spec: JobSpec | None = None, workers=2):
+def run(
+    store: ResultStore, tmp_path: Path, simulate, spec: JobSpec | None = None, workers=2
+) -> str:
     spec = spec or make_spec()
-    run_id = store.init_run(spec.model_dump_json(), "2.0.16")
-    run_job(spec, store, run_id, "2.0.16", tmp_path, simulate, workers)
+    run_id = init_run(store, spec)
+    run_job(spec, store, run_id, HASHES, tmp_path, simulate, workers)
+    return run_id
 
 
 def test_runs_every_game_and_records_wins_by_seat(store: ResultStore, tmp_path: Path):
     run(store, tmp_path, first_seat_wins)
     assert store.outcome_counts() == {Outcome.WIN: 8}
-    assert sum(store.winner_counts().values()) == 8
+    games = store.read_games()
+    assert len(games) == 8
+    assert all(g.winner is not None and g.winner.deck == g.seats[0].deck for g in games)
+    assert all(s.deck_hash == HASHES[s.deck] for g in games for s in g.seats)
 
 
 def test_failed_launch_is_retried_then_succeeds(store: ResultStore, tmp_path: Path):
@@ -62,10 +80,10 @@ def test_persistent_failure_records_crashes_not_losses(store: ResultStore, tmp_p
     def broken(request, home, cancel):
         raise SimError("always")
 
-    run(store, tmp_path, broken, make_spec(games=4), workers=1)
+    run_id = run(store, tmp_path, broken, make_spec(games=4), workers=1)
     assert store.outcome_counts() == {Outcome.CRASH: 4}
-    assert store.completed_tasks() == set()
-    assert store.failed_errors() == [(0, "always")]
+    assert store.completed_tasks(run_id) == set()
+    assert store.failed_errors(run_id) == [(0, "always")]
 
 
 def test_resume_skips_finished_tasks_and_retries_failed_ones(store: ResultStore, tmp_path: Path):
@@ -77,12 +95,12 @@ def test_resume_skips_finished_tasks_and_retries_failed_ones(store: ResultStore,
             raise SimError("down")
         return first_seat_wins(request, home, cancel)
 
-    run(store, tmp_path, fail_second_task, workers=1)
-    assert store.completed_tasks() == {0}
+    run_id = run(store, tmp_path, fail_second_task, workers=1)
+    assert store.completed_tasks(run_id) == {0}
 
     seen.clear()
     run(store, tmp_path, first_seat_wins, workers=1)
-    assert store.completed_tasks() == {0, 1}
+    assert store.completed_tasks(run_id) == {0, 1}
     assert store.outcome_counts() == {Outcome.WIN: 8}
 
 
@@ -118,11 +136,9 @@ def test_interrupt_cancels_running_workers_and_keeps_finished_tasks(
         raise KeyboardInterrupt
 
     spec = make_spec()
-    run_id = store.init_run(spec.model_dump_json(), "2.0.16")
+    run_id = init_run(store, spec)
     with pytest.raises(KeyboardInterrupt):
-        run_job(
-            spec, store, run_id, "2.0.16", tmp_path, first_task_fast_second_blocks, 2, interrupt
-        )
+        run_job(spec, store, run_id, HASHES, tmp_path, first_task_fast_second_blocks, 2, interrupt)
 
     assert cancelled.is_set()
-    assert store.completed_tasks() == {0}
+    assert store.completed_tasks(run_id) == {0}

@@ -22,7 +22,7 @@ def test_workers_for_honours_job_limits():
     spec = JobSpec(
         name="t",
         decks_dir=".",
-        pod=("a", "b"),
+        matchup={"kind": "pod", "decks": ("a", "b")},
         games=1,
         workers=WorkerSettings(max=2, ram_budget_gb=64),
     )

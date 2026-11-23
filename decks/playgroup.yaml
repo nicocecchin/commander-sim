@@ -1,0 +1,8 @@
+# Deck owners, used to label results. Deck files are in decks/playgroup/.
+players:
+  Player A: [keen-engineering.dck, witherbloom-pestilence.dck]
+  Player B: [counter-intelligence.dck, prismari-artistry.dck]
+  Player C: [lorehold-spirit.dck, world-shaper.dck, silverquill-influence.dck]
+  Player D: [turtle-power.dck]
+  Player E: [counter-blitz.dck, multiverse-reforged.dck]
+  Player F: [temur-roar.dck]

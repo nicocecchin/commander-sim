@@ -2,7 +2,7 @@
 
 import itertools
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -30,9 +30,15 @@ def _request_for(spec: JobSpec, task: Task) -> SimRequest:
 
 
 def _play_task(
-    spec: JobSpec, task: Task, home: Path, simulate: Simulate, cancel: threading.Event
+    spec: JobSpec,
+    task: Task,
+    deck_hashes: Mapping[str, str],
+    home: Path,
+    simulate: Simulate,
+    cancel: threading.Event,
 ) -> TaskRecord:
     """Run one task, retrying a failed launch. After the last failure, record crashes."""
+    hashes = tuple(deck_hashes[deck] for deck in task.seats)
     error = ""
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
@@ -40,18 +46,18 @@ def _play_task(
         except SimError as exc:
             error = str(exc)
             continue
-        return TaskRecord(task.index, task.seed, task.seats, output.games, attempt)
+        return TaskRecord(task.index, task.seed, task.seats, hashes, output.games, attempt)
     crashes = tuple(
         GameResult(number, Outcome.CRASH, None, None, None) for number in range(1, task.games + 1)
     )
-    return TaskRecord(task.index, task.seed, task.seats, crashes, MAX_ATTEMPTS, error)
+    return TaskRecord(task.index, task.seed, task.seats, hashes, crashes, MAX_ATTEMPTS, error)
 
 
 def run_job(
     spec: JobSpec,
     store: ResultStore,
     run_id: str,
-    forge_version: str,
+    deck_hashes: Mapping[str, str],
     run_dir: Path,
     simulate: Simulate,
     workers: int,
@@ -63,7 +69,7 @@ def run_job(
     KeyboardInterrupt the running Forge processes are killed, finished tasks stay saved, and the
     exception is re-raised; running the same job again resumes.
     """
-    done = store.completed_tasks()
+    done = store.completed_tasks(run_id)
     pending = [task for task in plan_tasks(spec) if task.index not in done]
     cancel = threading.Event()
     slots = itertools.count()
@@ -73,15 +79,15 @@ def run_job(
         local.home = run_dir / "workers" / str(next(slots)) / "home"
 
     def work(task: Task) -> TaskRecord:
-        return _play_task(spec, task, local.home, simulate, cancel)
+        return _play_task(spec, task, deck_hashes, local.home, simulate, cancel)
 
     executor = ThreadPoolExecutor(max_workers=workers, initializer=assign_slot)
     try:
         futures = [executor.submit(work, task) for task in pending]
         for future in as_completed(futures):
-            store.save_task(future.result(), run_id, forge_version)
+            store.save_task(future.result(), run_id)
             if on_progress:
-                on_progress(store.outcome_counts())
+                on_progress(store.outcome_counts(run_id))
     except BaseException:
         cancel.set()
         raise

@@ -186,3 +186,33 @@ the slowest game took 913 s.
 thrown from `AiController.chooseSpellAbilitiesToPlayFromList`. This is Forge's own per-decision
 AI time limit, not a crash: the AI abandons that decision and carries on, so very busy boards make
 it play worse. It is separate from the `-c` match clock and not visible in stdout.
+
+## Statistics design (milestone 4)
+
+Written for anyone consuming the results database.
+
+- **Schema v2** (`PRAGMA user_version = 2`): `runs` (run id, job JSON, Forge version, deck content
+  hashes, cards Forge flags as AI-weak), `tasks`, `games`, `seats` (deck file, deck hash, pilot).
+  One run folder holds one run; `merge` copies several databases into one. Games record the
+  task's seed: a task's games share one `-s` seed and are played in sequence by one Forge process.
+- **Winrate** is wins / games that had a winner, with a 95% Wilson interval. Timeouts are reported
+  next to it (not as losses) and crashes are excluded entirely. If timeouts correlate with a deck
+  (slow, busy boards) the winrate is conditional on the game finishing; check the timeout column.
+- **A/B comparison:** Newcombe hybrid-score interval for the difference and a pooled two-sided
+  z-test. The "smallest detectable difference" assumes a 25% baseline, 5% significance and 80%
+  power: about 5.4 points at 1000 decided games per deck, 4.9 at 1200.
+- **Field check:** `compare` warns if the two decks' opponent mixes or seat distributions differ
+  by more than 5% total variation, and if they met each other (then results are not independent).
+  An `ab` job guarantees identical opponents, seats and seed for both variants by construction.
+- **Seat balance:** each task is one rotation of a base seating and all 4 rotations are played
+  before the next base seating, so every deck sits in every seat equally often. Base seatings are
+  reshuffled each cycle so neighbours vary. A `league` cycles through all `C(n,4)` pods.
+- **Ratings:** Plackett-Luce on winners only (P(deck wins pod) = strength / sum of pod strengths),
+  fitted with the MM algorithm and a prior of half a win and half a loss against a reference deck
+  of strength 1. "Expected winrate vs 3 reference decks" is `s / (s + 3)`. Intervals are percentile
+  bootstraps over pod/winner counts (200 resamples take about 5 s). Forge gives no elimination
+  order in quiet mode, so a rank-based model (TrueSkill, OpenSkill) would have nothing to use.
+  Needs numpy.
+- A tiny real A/B (16 games on the starter decks, 2 workers, about 8 minutes) exercised the whole
+  path. Seat winrates in it were 25 / 19 / 31 / 25% for seats 1-4 over 16 games each: far too few
+  games to say anything about seat advantage.

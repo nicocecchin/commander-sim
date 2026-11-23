@@ -46,21 +46,50 @@ Loading Forge's card database takes about 7 seconds per command.
 
 ## Running simulations
 
-A job file (see `jobs/playgroup-smoke.yaml`) names a folder of `.dck` decks, the pod of decks that
-play each other, and the number of games. Seat orders are rotated so every deck plays every seat
-equally often (use a game count that is a multiple of 24 x `games_per_task` for a 4-deck pod).
+A job file names a folder of `.dck` decks, a **matchup** and a game count. Seats are rotated so
+every deck sits in every seat equally often; the CLI warns if your game count does not allow that.
+
+```yaml
+matchup: {kind: pod, decks: [a.dck, b.dck, c.dck, d.dck]}   # the same 4 decks every game
+matchup: {kind: league, decks: [... 4 or more decks]}        # every 4-deck pod; for ratings
+matchup:                                                      # A/B test of two variants
+  kind: ab
+  variants: [my-deck-a.dck, my-deck-b.dck]
+  field: [x.dck, y.dck, z.dck, w.dck]                         # opponents, at least 3
+```
+
+In an A/B job the two variants face the **same opponents, in the same seats, with the same seed**;
+`games` is split equally between them. See `jobs/` for examples.
 
 ```bash
 uv run commander-sim run jobs/playgroup-smoke.yaml
 ```
 
-Every deck in the pod is validated first and the run is refused if one is invalid (add
-`--allow-invalid` to override). Warnings, such as cards Forge says its AI plays badly, are always
-shown.
+Every deck is validated first and the run is refused if one is invalid (add `--allow-invalid` to
+override). Warnings, such as cards Forge says its AI plays badly, are always shown. Results go to
+`runs/<job name>/results.sqlite`. Press Ctrl+C to stop; running the same command again resumes
+where it left off. The worker count is `min(cores - 1, RAM budget / heap)`; set `workers.max` or
+`workers.ram_budget_gb` in the job file to override it.
 
-Results go to `runs/<job name>/results.sqlite`. Press Ctrl+C to stop; running the same command
-again resumes where it left off. The worker count is `min(cores - 1, RAM budget / heap)`; set
-`workers.max` or `workers.ram_budget_gb` in the job file to override it.
+## Results
+
+```bash
+uv run commander-sim stats runs/playgroup-league/results.sqlite     # winrates, seats, ratings
+uv run commander-sim compare runs/ab/results.sqlite --a my-deck-a.dck --b my-deck-b.dck
+uv run commander-sim merge all.sqlite runs/one/results.sqlite runs/two/results.sqlite
+```
+
+- Winrates are wins divided by games that had a winner, with a 95% Wilson interval. Timeouts are
+  shown separately and crashes are never counted as losses.
+- `compare` gives the difference with a 95% interval and p-value, says how small a difference the
+  sample can detect, and warns when the two decks did not face the same field or seats. About
+  1000 decided games per deck are needed to resolve a 5-point difference.
+- Ratings are a Plackett-Luce fit on who won each pod ("expected winrate against three reference
+  decks"), with bootstrap intervals.
+- `decks/playgroup.yaml` maps players to decks and labels the tables. Results always carry the
+  reminder that they measure decks as piloted by the Forge AI.
+- `merge` and `stats` accept several databases (for example runs from the run box); a run
+  cannot appear twice.
 
 ## Tests
 

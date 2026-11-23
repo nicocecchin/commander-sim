@@ -27,6 +27,7 @@ class Issue:
 class ValidationReport:
     deck_name: str
     issues: tuple[Issue, ...]
+    ai_weak_cards: tuple[str, ...] = ()
 
     @property
     def errors(self) -> tuple[Issue, ...]:
@@ -96,16 +97,8 @@ def _identity_issues(
     ]
 
 
-def _ai_weakness_issues(cards: list[tuple[DeckCard, CardInfo]]) -> list[Issue]:
-    weak = sorted({info.name for _, info in cards if AI_WEAK_FLAG in info.ai_flags})
-    if not weak:
-        return []
-    return [
-        Issue(
-            Severity.WARNING,
-            f"Forge marks {len(weak)} card(s) as played badly by its AI: {', '.join(weak)}",
-        )
-    ]
+def _ai_weak_cards(cards: list[tuple[DeckCard, CardInfo]]) -> tuple[str, ...]:
+    return tuple(sorted({info.name for _, info in cards if AI_WEAK_FLAG in info.ai_flags}))
 
 
 def validate_deck(deck: Deck, index: CardIndex) -> ValidationReport:
@@ -125,8 +118,15 @@ def validate_deck(deck: Deck, index: CardIndex) -> ValidationReport:
     issues += _duplicate_issues(commanders + main)
     if commander_infos:
         issues += _identity_issues(commander_infos, main)
-    issues += _ai_weakness_issues(commanders + main)
-    return ValidationReport(deck.name, tuple(issues))
+    weak = _ai_weak_cards(commanders + main)
+    if weak:
+        issues.append(
+            Issue(
+                Severity.WARNING,
+                f"Forge marks {len(weak)} card(s) as played badly by its AI: {', '.join(weak)}",
+            )
+        )
+    return ValidationReport(deck.name, tuple(issues), weak)
 
 
 def validate_dck_files(

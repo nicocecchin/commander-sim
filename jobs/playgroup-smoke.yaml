@@ -1,7 +1,9 @@
-# 4 real precons, 96 games = every seat order (24) x 4 games per Forge launch.
+# 4 real precons, 96 games = every seat order (4 rotations) x 4 games per Forge launch x 6 cycles.
 name: playgroup-smoke
 decks_dir: ../decks/playgroup
-pod: [turtle-power.dck, multiverse-reforged.dck, keen-engineering.dck, lorehold-spirit.dck]
+matchup:
+  kind: pod
+  decks: [turtle-power.dck, multiverse-reforged.dck, keen-engineering.dck, lorehold-spirit.dck]
 games: 96
 games_per_task: 4
 seed: 1

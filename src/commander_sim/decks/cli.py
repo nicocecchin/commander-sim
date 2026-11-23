@@ -32,11 +32,15 @@ def print_report(report: ValidationReport) -> None:
         typer.secho(f"  {issue.severity.value}: {issue.message}", fg=color)
 
 
-def check_decks(decks: list[Deck], index: CardIndex) -> bool:
-    """Print a report per deck; return True when none has errors."""
+def check_decks(decks: list[Deck], index: CardIndex) -> list[ValidationReport]:
+    """Validate every deck and print a report for each."""
     reports = [validate_deck(deck, index) for deck in decks]
     for report in reports:
         print_report(report)
+    return reports
+
+
+def all_valid(reports: list[ValidationReport]) -> bool:
     return all(report.ok for report in reports)
 
 
@@ -85,7 +89,7 @@ def validate(paths: list[Path], vendor_dir: Path = DEFAULT_VENDOR_DIR) -> None:
     """Validate .dck files, folders of them, or text decklists."""
     index = load_index(vendor_dir)
     decks = [deck for path in paths for deck in _decks_in(path, index)]
-    if not check_decks(decks, index):
+    if not all_valid(check_decks(decks, index)):
         raise typer.Exit(1)
 
 
@@ -100,7 +104,7 @@ def import_deck(
     """Convert a Moxfield / Archidekt / plain-text export to a Forge .dck file."""
     index = load_index(vendor_dir)
     deck = _canonical(_parse_text_file(source, name, index), index)
-    if not check_decks([deck], index) and not allow_invalid:
+    if not all_valid(check_decks([deck], index)) and not allow_invalid:
         typer.secho("Not written (use --allow-invalid to write anyway).", fg=typer.colors.RED)
         raise typer.Exit(1)
     target = out_dir / f"{_slug(name)}.dck"
