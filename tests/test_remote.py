@@ -142,11 +142,41 @@ def test_launch_clears_the_stop_marker_and_runs_the_start_script():
     )
 
 
-def test_watchdog_install_keeps_other_cron_entries():
-    script = commands.install_watchdog_script(REMOTE)
-    assert "crontab -l 2>/dev/null | grep -v 'watchdog.sh'" in script
-    assert "*/10 * * * *" in script
-    assert "grep -v 'watchdog.sh'" in commands.remove_watchdog_script(REMOTE)
+def run_with_fake_crontab(tmp_path: Path, script: str, existing: str) -> str:
+    """Run a script with a `crontab` stand-in that keeps the table in a file; return the table.
+
+    Like the real one, it reads all input before replacing the table.
+    """
+    table = tmp_path / "table"
+    table.write_text(existing, encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "crontab"
+    fake.write_text(
+        f'#!/bin/sh\nif [ "$1" = "-l" ]; then [ -s {table} ] && cat {table} || exit 1; '
+        f"else cat > {table}.new && mv {table}.new {table}; fi\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    subprocess.run(["sh", "-c", script], cwd=tmp_path, env=env, check=True, capture_output=True)
+    return table.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("existing", ["", "0 3 * * * backup.sh\n"])
+def test_watchdog_install_adds_its_entry_and_keeps_others(tmp_path: Path, existing: str):
+    table = run_with_fake_crontab(tmp_path, commands.install_watchdog_script(REMOTE), existing)
+    assert "*/10 * * * *" in table and "watchdog.sh" in table
+    assert existing.strip() in table
+    assert (tmp_path / "commander-sim" / "watchdog.sh").is_file()
+    again = run_with_fake_crontab(tmp_path, commands.install_watchdog_script(REMOTE), table)
+    assert again.count("watchdog.sh") == table.count("watchdog.sh")
+
+
+def test_watchdog_remove_keeps_other_entries(tmp_path: Path):
+    existing = "0 3 * * * backup.sh\n*/10 * * * * cd x && sh commander-sim/watchdog.sh\n"
+    table = run_with_fake_crontab(tmp_path, commands.remove_watchdog_script(REMOTE), existing)
+    assert table.strip() == "0 3 * * * backup.sh"
 
 
 @pytest.mark.parametrize(

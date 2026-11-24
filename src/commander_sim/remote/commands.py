@@ -203,7 +203,9 @@ done
 
 
 def _crontab_without_watchdog() -> str:
-    return f"crontab -l 2>/dev/null | grep -v '{WATCHDOG_FILE}'"
+    """The current cron entries minus ours. `|| true`: grep exits 1 when nothing is left, which
+    must not abort an install running under `set -e`."""
+    return f"{{ crontab -l 2>/dev/null | grep -v '{WATCHDOG_FILE}' || true; }}"
 
 
 def install_watchdog_script(remote: Remote) -> str:
