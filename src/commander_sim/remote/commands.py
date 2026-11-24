@@ -3,7 +3,10 @@
 Remote layout, relative to the remote user's home directory:
     <dir>/src/<commit>/        unpacked source, built into image commander-sim:<commit>
     <dir>/jobs/<job>/bundle/   the job bundle (job.yaml, decks/, manifest.json)
-    <dir>/jobs/<job>/runs/     results, mounted into the container as /work
+    <dir>/jobs/<job>/runs/     results (the job folder is mounted into the container as /work)
+    <dir>/jobs/<job>/start.sh  starts or resumes the job; used by `remote run` and the watchdog
+    <dir>/jobs/<job>/stopped   marker left by `remote stop`, so the watchdog leaves the job alone
+    <dir>/watchdog.sh          run by cron: resumes jobs whose container stopped unfinished
 """
 
 import shlex
@@ -12,6 +15,11 @@ from dataclasses import dataclass
 DEFAULT_REMOTE_DIR = "commander-sim"
 RESTART_ATTEMPTS = 5
 STOP_GRACE_SECONDS = 60
+WATCHDOG_MINUTES = 10
+START_FILE = "start.sh"
+STOPPED_MARKER = "stopped"
+WATCHDOG_FILE = "watchdog.sh"
+WATCHDOG_LOG = "watchdog.log"
 MEMORY_GB_PER_WORKER = 2
 _SSH_OPTIONS = ("-o", "BatchMode=yes", "-o", "ConnectTimeout=15")
 
@@ -103,7 +111,7 @@ def start_script(remote: Remote, commit: str, job: str, workers: int) -> str:
     """
     name = container(job)
     run = (
-        f"docker run -d --name {name} --restart on-failure:{RESTART_ATTEMPTS} "
+        f"docker run -d --init --name {name} --restart on-failure:{RESTART_ATTEMPTS} "
         f"--cpus {workers + 1} --memory {workers * MEMORY_GB_PER_WORKER}g "
         f'--user "$(id -u):$(id -g)" -v {remote.absolute("jobs", job)}:/work '
         f"{image(commit)} run /work/bundle/job.yaml --runs-dir /work/runs"
@@ -111,7 +119,15 @@ def start_script(remote: Remote, commit: str, job: str, workers: int) -> str:
     return (
         f'if [ "$(docker inspect -f {{{{.State.Running}}}} {name} 2>/dev/null)" = true ]; then '
         f"echo '{name} is already running' >&2; exit 3; fi; "
-        f"docker rm {name} >/dev/null 2>&1; {run}"
+        f"docker rm {name} >/dev/null 2>&1; {run}\n"
+    )
+
+
+def launch_script(remote: Remote, job: str) -> str:
+    """Clear a `remote stop` marker and run the job's uploaded start script."""
+    return (
+        f"rm -f {remote.path('jobs', job, STOPPED_MARKER)} && "
+        f"sh {remote.path('jobs', job, START_FILE)}"
     )
 
 
@@ -125,7 +141,9 @@ def status_script(remote: Remote, job: str) -> str:
         'case "$state" in '
         "'running '*) echo 'running';; "
         "'exited 0') echo 'finished';; "
-        "'exited 130') echo 'stopped cleanly; remote run resumes it';; "
+        f"'exited 130') if [ -f {remote.path('jobs', job, STOPPED_MARKER)} ]; then "
+        "echo 'stopped with remote stop; remote run resumes it'; else "
+        "echo 'stopped by someone else; the watchdog or remote run resumes it'; fi;; "
         "none) echo 'no container for this job';; "
         '*) echo "stopped unexpectedly ($state); remote run resumes it from the saved games";; '
         "esac; "
@@ -136,13 +154,18 @@ def status_script(remote: Remote, job: str) -> str:
         f"{name} 2>/dev/null; "
         f"if [ -f {remote.path('jobs', job, 'runs', job, 'results.sqlite')} ]; then "
         f"{_tool(remote, job, 'progress', database)}; else echo 'no results yet'; fi; "
-        f"docker logs --tail 3 {name} 2>&1 | tail -3"
+        f"docker logs --tail 3 {name} 2>&1 | tail -3; "
+        f"grep -s ' {job} ' {remote.path(WATCHDOG_LOG)} | tail -2"
     )
 
 
-def stop_script(job: str) -> str:
-    """SIGTERM, which the run treats like Ctrl+C: finished games stay saved."""
-    return f"docker stop -t {STOP_GRACE_SECONDS} {container(job)}"
+def stop_script(remote: Remote, job: str) -> str:
+    """Mark the job as deliberately stopped, then SIGTERM it (the run treats it like Ctrl+C:
+    finished games stay saved)."""
+    return (
+        f"touch {remote.path('jobs', job, STOPPED_MARKER)} && "
+        f"docker stop -t {STOP_GRACE_SECONDS} {container(job)}"
+    )
 
 
 def snapshot_script(remote: Remote, job: str) -> str:
@@ -153,3 +176,51 @@ def snapshot_script(remote: Remote, job: str) -> str:
         f"/work/runs/{job}/results.sqlite",
         "/work/fetch/results.sqlite",
     )
+
+
+def watchdog_script(remote: Remote) -> str:
+    """Resume every job whose container is gone or stopped before finishing.
+
+    Skipped: running or restarting containers, finished ones (exit code 0) and jobs stopped
+    with `remote stop`. Run from cron in the remote home directory.
+    """
+    jobs = remote.path("jobs")
+    return f"""#!/bin/sh
+# commander-sim watchdog: resumes runs whose container stopped before finishing.
+for start in {jobs}/*/{START_FILE}; do
+  [ -f "$start" ] || continue
+  dir=$(dirname "$start"); job=$(basename "$dir")
+  [ -f "$dir/{STOPPED_MARKER}" ] && continue
+  state=$(docker inspect -f '{{{{.State.Status}}}} {{{{.State.ExitCode}}}}' "commander-sim-$job" \
+    2>/dev/null) || state=missing
+  case "$state" in
+    running*|restarting*|"exited 0") continue;;
+  esac
+  echo "$(date -Is) $job was '$state', resuming"
+  sh "$start"
+done
+"""
+
+
+def _crontab_without_watchdog() -> str:
+    return f"crontab -l 2>/dev/null | grep -v '{WATCHDOG_FILE}'"
+
+
+def install_watchdog_script(remote: Remote) -> str:
+    """Write the watchdog and add (or replace) its cron entry, leaving other entries alone."""
+    entry = (
+        f'*/{WATCHDOG_MINUTES} * * * * cd "$HOME" && sh {remote.path(WATCHDOG_FILE)} '
+        f">> {remote.path(WATCHDOG_LOG)} 2>&1"
+    )
+    return (
+        "set -e; command -v crontab >/dev/null || "
+        "{ echo 'crontab is not available' >&2; exit 2; }; "
+        f"mkdir -p {remote.path()}; cat > {remote.path(WATCHDOG_FILE)} <<'WATCHDOG'\n"
+        f"{watchdog_script(remote)}WATCHDOG\n"
+        f"({_crontab_without_watchdog()}; echo {shlex.quote(entry)}) | crontab -; "
+        "crontab -l | grep commander-sim"
+    )
+
+
+def remove_watchdog_script(remote: Remote) -> str:
+    return f"({_crontab_without_watchdog()}) | crontab -; rm -f {remote.path(WATCHDOG_FILE)}"

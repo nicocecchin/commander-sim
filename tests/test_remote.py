@@ -114,6 +114,7 @@ def test_ssh_and_scp_use_batch_mode_and_argument_lists():
 
 def test_start_script_resumes_and_limits_resources():
     script = commands.start_script(REMOTE, "0123456789abcdef", "precon-four", 10)
+    assert "docker run -d --init" in script
     assert "--restart on-failure:5" in script
     assert "--cpus 11 --memory 20g" in script
     assert '-v "$HOME"/commander-sim/jobs/precon-four:/work' in script
@@ -129,8 +130,23 @@ def test_status_and_snapshot_use_the_containers_own_image():
     assert "/work/fetch/results.sqlite" in commands.snapshot_script(REMOTE, "j")
 
 
-def test_stop_sends_sigterm_with_a_grace_period():
-    assert commands.stop_script("j") == "docker stop -t 60 commander-sim-j"
+def test_stop_marks_the_job_then_sends_sigterm_with_a_grace_period():
+    assert commands.stop_script(REMOTE, "j") == (
+        "touch commander-sim/jobs/j/stopped && docker stop -t 60 commander-sim-j"
+    )
+
+
+def test_launch_clears_the_stop_marker_and_runs_the_start_script():
+    assert commands.launch_script(REMOTE, "j") == (
+        "rm -f commander-sim/jobs/j/stopped && sh commander-sim/jobs/j/start.sh"
+    )
+
+
+def test_watchdog_install_keeps_other_cron_entries():
+    script = commands.install_watchdog_script(REMOTE)
+    assert "crontab -l 2>/dev/null | grep -v 'watchdog.sh'" in script
+    assert "*/10 * * * *" in script
+    assert "grep -v 'watchdog.sh'" in commands.remove_watchdog_script(REMOTE)
 
 
 @pytest.mark.parametrize(
@@ -141,6 +157,11 @@ def test_stop_sends_sigterm_with_a_grace_period():
         commands.snapshot_script(REMOTE, "j"),
         commands.build_script(REMOTE, "c" * 40),
         commands.prepare_job_script(REMOTE, "j"),
+        commands.launch_script(REMOTE, "j"),
+        commands.stop_script(REMOTE, "j"),
+        commands.watchdog_script(REMOTE),
+        commands.install_watchdog_script(REMOTE),
+        commands.remove_watchdog_script(REMOTE),
     ],
 )
 def test_scripts_are_valid_posix_shell(script: str):

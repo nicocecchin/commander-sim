@@ -127,6 +127,9 @@ uv run commander-sim remote stop precon-four            # clean stop; `remote ru
   itself fails Docker restarts the container (up to 5 times) and it resumes. If the container
   was stopped or killed by someone, or the machine rebooted, `remote status` says so and
   `remote run` with the same job file resumes from the saved games.
+- `remote watchdog install` adds a cron entry on the remote that does that resume every 10
+  minutes for any unfinished job not stopped with `remote stop` (`remote watchdog remove` undoes
+  it; other cron entries are left alone).
 - `--workers` caps the Forge processes; the container also gets `workers + 1` CPUs and
   `2 GB x workers` of memory, so the run cannot take over a shared machine.
 - `remote fetch` is safe while the job is running. Use `stats`, `compare` or `merge` on the

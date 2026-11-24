@@ -19,6 +19,11 @@ remote_app = typer.Typer(
     no_args_is_help=True,
     help="Run jobs on another machine over ssh (the remote needs Docker and a POSIX shell).",
 )
+watchdog_app = typer.Typer(
+    no_args_is_help=True,
+    help="A cron job on the remote that resumes runs stopped before finishing.",
+)
+remote_app.add_typer(watchdog_app, name="watchdog")
 
 HOST_OPTION = typer.Option(
     ..., envvar="COMMANDER_SIM_HOST", help="ssh destination, e.g. user@runbox or a ssh alias."
@@ -74,9 +79,12 @@ def run(
             bundle = write_bundle(spec, scratch / "bundle", commit, workers)
         except BundleError as error:
             raise typer.BadParameter(str(error)) from None
+        start = scratch / commands.START_FILE
+        start.write_text(commands.start_script(remote, commit, spec.name, workers), "utf-8")
         _execute(commands.ssh(remote, commands.prepare_job_script(remote, spec.name)))
         _execute(commands.scp_to(remote, str(bundle), remote.path("jobs", spec.name)))
-    _execute(commands.ssh(remote, commands.start_script(remote, commit, spec.name, workers)))
+        _execute(commands.scp_to(remote, str(start), remote.path("jobs", spec.name)))
+    _execute(commands.ssh(remote, commands.launch_script(remote, spec.name)))
     typer.echo(
         f"Started {spec.name} on {remote.destination} with {workers} workers. "
         f"Check it with: commander-sim remote status {spec.name}"
@@ -93,8 +101,9 @@ def status(job: str, host: str = HOST_OPTION, remote_dir: str = DIR_OPTION) -> N
 @remote_app.command("stop")
 def stop(job: str, host: str = HOST_OPTION, remote_dir: str = DIR_OPTION) -> None:
     """Stop a remote job cleanly; `remote run` with the same job file resumes it."""
-    _execute(commands.ssh(Remote(host, remote_dir), commands.stop_script(job)), echo=False)
-    typer.echo(f"Stopped {job}. Finished games are saved.")
+    remote = Remote(host, remote_dir)
+    _execute(commands.ssh(remote, commands.stop_script(remote, job)), echo=False)
+    typer.echo(f"Stopped {job}; the watchdog will leave it alone. Finished games are saved.")
 
 
 @remote_app.command("fetch")
@@ -123,3 +132,20 @@ def fetch(
         load_databases([database]), load_owners(playgroup), target / "report.html"
     )
     typer.echo(f"Fetched {database}\nReport: {report}")
+
+
+@watchdog_app.command("install")
+def watchdog_install(host: str = HOST_OPTION, remote_dir: str = DIR_OPTION) -> None:
+    """Every 10 minutes, resume jobs whose container is gone or stopped unfinished
+    (someone stopped it, the machine rebooted). Jobs stopped with `remote stop` are left alone."""
+    remote = Remote(host, remote_dir)
+    _execute(commands.ssh(remote, commands.install_watchdog_script(remote)))
+    typer.echo(f"Watchdog installed; it logs to {remote.path(commands.WATCHDOG_LOG)}.")
+
+
+@watchdog_app.command("remove")
+def watchdog_remove(host: str = HOST_OPTION, remote_dir: str = DIR_OPTION) -> None:
+    """Remove the watchdog's cron entry and script; other cron entries are kept."""
+    remote = Remote(host, remote_dir)
+    _execute(commands.ssh(remote, commands.remove_watchdog_script(remote)))
+    typer.echo("Watchdog removed.")

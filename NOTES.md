@@ -299,3 +299,11 @@ warning in the A/B section.
   Someone stopping or killing the container, or a reboot, needs `remote run` again, which resumes
   from the saved games; `remote status` says which case happened. Killing the container's main
   process from the host with `kill -9` is refused (permission denied) even for the same user.
+- **Watchdog** (`remote watchdog install`): a cron entry every 10 minutes runs `watchdog.sh`, which
+  resumes any job whose container is missing or exited with a non-zero code, unless the job was
+  stopped with `remote stop` (marker file `jobs/<job>/stopped`). Tested locally against real
+  containers: missing -> started, running -> untouched, stopped by someone else -> resumed,
+  stopped with the marker -> untouched.
+- Containers run with `--init`: without it Python is PID 1, which ignores SIGTERM until the run
+  installs its handler, so a `docker stop` during start-up waited the full grace period and ended
+  in SIGKILL (exit 137).
