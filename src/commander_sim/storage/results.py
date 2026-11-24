@@ -116,8 +116,17 @@ class RunInfo:
     run_id: str
     name: str
     forge_version: str
+    created_at: str
+    job_json: str
     deck_hashes: Mapping[str, str]
     ai_weak_cards: Mapping[str, Sequence[str]]
+
+
+@dataclass(frozen=True)
+class TaskFailure:
+    run_id: str
+    task_index: int
+    error: str
 
 
 class ResultStore:
@@ -242,13 +251,20 @@ class ResultStore:
 
     def read_runs(self) -> list[RunInfo]:
         rows = self._db.execute(
-            "SELECT run_id, name, forge_version, deck_hashes_json, ai_weak_cards_json FROM runs"
-            " ORDER BY created_at"
+            "SELECT run_id, name, forge_version, created_at, job_json, deck_hashes_json,"
+            " ai_weak_cards_json FROM runs ORDER BY created_at"
         )
         return [
-            RunInfo(run_id, name, forge, json.loads(hashes), json.loads(weak))
-            for run_id, name, forge, hashes, weak in rows
+            RunInfo(run_id, name, forge, created, job, json.loads(hashes), json.loads(weak))
+            for run_id, name, forge, created, job, hashes, weak in rows
         ]
+
+    def read_failures(self) -> list[TaskFailure]:
+        rows = self._db.execute(
+            "SELECT run_id, task_index, error FROM tasks WHERE status = 'failed'"
+            " ORDER BY run_id, task_index"
+        )
+        return [TaskFailure(*row) for row in rows]
 
     def read_games(self) -> list[GameRecord]:
         seats: dict[int, list[Seat]] = {}

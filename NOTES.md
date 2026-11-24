@@ -262,3 +262,13 @@ One slow smoke-run game was replayed with its seed (853 s versus 913 s the first
   `-XX:-TieredCompilation` 95 s. Differences are within noise except possibly `-XX:-TieredCompilation`
   (about 12% faster); not adopted. GC is not the bottleneck.
 - Per-game speed cannot be improved without changing Forge; throughput scales with worker count.
+
+## Report (milestone 5)
+
+`report/` builds one self-contained HTML page: `build.py` gathers plain data from the stats
+modules, `svg.py` draws the charts as inline SVG (interval dot plots and histograms, styled by
+CSS classes so they follow light/dark mode), `render.py` fills `templates/report.html.j2`
+with Jinja2. Autoescaping is switched on explicitly because Jinja's default only covers `.html`
+templates and ours is `.j2`; a test with a hostile deck name guards this. The report states the
+Forge-AI disclaimer at the top, shows timeouts and crashes separately, and repeats every `compare`
+warning in the A/B section.

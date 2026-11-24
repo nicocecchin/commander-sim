@@ -89,6 +89,17 @@ uv run commander-sim merge all.sqlite runs/one/results.sqlite runs/two/results.s
   half the real turn count in games with more than 2 players.
 - Ratings are a Plackett-Luce fit on who won each pod ("expected winrate against three reference
   decks"), with bootstrap intervals.
+- Every `run` writes `runs/<job>/report.html` when it finishes. `report` builds one from any
+  databases, including merged ones:
+
+  ```bash
+  uv run commander-sim report runs/playgroup-league/results.sqlite --out league.html
+  ```
+
+  The report is a single offline HTML file (inline charts, light and dark mode, phone friendly):
+  deck winrates with intervals, the A/B result when the job was an A/B test, ratings, seat
+  winrates, game length and speed, and a data-quality section (crashed tasks, decks whose card
+  list changed, a seat-balance grid, cards Forge says its AI plays badly).
 - `decks/playgroup.yaml` maps players to decks and labels the tables. Results always carry the
   reminder that they measure decks as piloted by the Forge AI.
 - `merge` and `stats` accept several databases (for example runs from the run box); a run

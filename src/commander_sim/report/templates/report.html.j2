@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+:root {
+  --bg: #f7f6f2; --surface: #ffffff; --text: #1f2328; --muted: #5d646c; --line: #dcd9d0;
+  --accent: #2f6f8f; --accent-soft: #d9e8ef; --warn: #b5560f; --warn-bg: #fbeedd;
+  --bad: #b3261e; --good: #2a7a43;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a; --surface: #1d2024; --text: #e6e6e3; --muted: #9aa1a8; --line: #33383e;
+    --accent: #6cb4d6; --accent-soft: #23404f; --warn: #f0a35e; --warn-bg: #3a2c1c;
+    --bad: #f07a72; --good: #6fcf8c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 40px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 1rem; margin: 20px 0 6px; }
+p, li { max-width: 70ch; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.note { background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+.warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 14px;
+  margin: 8px 0; }
+.stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 14px; min-width: 110px; }
+.stat b { display: block; font-size: 1.3rem; }
+.stat span { color: var(--muted); font-size: 0.85rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; font-size: 0.92rem; }
+th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--line);
+  white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+.chart { width: 100%; min-width: 560px; height: auto; display: block; margin: 8px 0; }
+.chart .label { fill: var(--text); font-size: 13px; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .baseline { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart .ci { stroke: var(--accent); stroke-width: 2; }
+.chart .dot { fill: var(--accent); }
+.chart .bar { fill: var(--accent); opacity: 0.85; }
+.legend { color: var(--muted); font-size: 0.85rem; }
+.heat td { text-align: center; background: color-mix(in srgb, var(--accent) calc(var(--v) * 45%), transparent); }
+.heat td:first-child { text-align: left; background: none; }
+.bad { color: var(--bad); }
+.good { color: var(--good); }
+code { font-size: 0.85em; }
+pre { overflow-x: auto; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 14px; }
+details { margin: 8px 0; }
+summary { cursor: pointer; color: var(--muted); }
+@media (max-width: 520px) { h1 { font-size: 1.4rem; } .stat { min-width: 90px; } }
+</style>
+</head>
+<body>
+<main>
+<h1>{{ title }}</h1>
+<p class="sub">{{ total }} games · Forge {{ forge_versions }} · generated {{ generated_at }}</p>
+<p class="note"><strong>How to read this:</strong> {{ disclaimer }} Winrates carry 95% confidence
+intervals; an average deck wins {{ baseline_text }} of games in a pod of {{ seat_count }}.</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ outcomes.win }}</b><span>won</span></div>
+  <div class="stat"><b>{{ outcomes.timeout }}</b><span>timed out (not losses)</span></div>
+  <div class="stat"><b class="{{ 'bad' if outcomes.crash else '' }}">{{ outcomes.crash }}</b>
+    <span>crashed (not counted)</span></div>
+  {% if speed %}
+  <div class="stat"><b>{{ '%.1f' % speed.mean_minutes }} min</b><span>average game</span></div>
+  {% endif %}
+</div>
+
+<h2>Decks</h2>
+<div class="scroll"><table>
+<tr><th>Deck</th><th>Games</th><th>Wins</th><th>Winrate</th><th>95% interval</th>
+<th>Win length (turns / rounds)</th><th>Timeouts</th></tr>
+{% for d in decks %}
+<tr><td>{{ label(d.deck) }}</td><td>{{ d.decided }}</td><td>{{ d.wins }}</td>
+<td>{{ d.winrate | pct }}</td><td>{{ d.interval | ci }}</td>
+<td>{% if d.mean_win_turn is not none %}{{ '%.1f' % d.mean_win_turn }} / {{ '%.1f' % d.mean_win_rounds }}{% else %}-{% endif %}</td>
+<td>{{ d.timeouts }} ({{ d.timeout_rate | pct }})</td></tr>
+{% endfor %}
+</table></div>
+{{ deck_chart }}
+<p class="legend">Dot = winrate, bar = 95% interval, dashed line = {{ baseline_text }}. Intervals that
+overlap cannot be told apart with this many games. "Games" counts games that had a winner.</p>
+
+{% for ab in ab_sections %}
+<h2>A/B: {{ ab.a }} vs {{ ab.b }}</h2>
+<p>Run{{ 's' if ab.run_names | length > 1 }}: {{ ab.run_names | join(', ') }}. Both variants faced
+the same opponents in the same seats.</p>
+<div class="stats">
+  <div class="stat"><b>{{ ab.difference }}</b><span>{{ ab.b }} minus {{ ab.a }}</span></div>
+  <div class="stat"><b>{{ ab.interval }}</b><span>95% interval</span></div>
+  <div class="stat"><b>{{ ab.p_value }}</b><span>p-value</span></div>
+  <div class="stat"><b>{{ ab.detectable }}</b><span>smallest detectable difference</span></div>
+</div>
+{{ ab.chart }}
+{% for warning in ab.warnings %}<p class="warn">{{ warning }}</p>{% endfor %}
+{% if not ab.warnings %}<p class="good">The sample is large enough to resolve a difference of about
+5 points, and the two variants faced comparable fields.</p>{% endif %}
+{% endfor %}
+
+{% if rating_chart %}
+<h2>Ratings</h2>
+<p>A model fitted to who won each pod (Plackett–Luce) gives each deck a strength; the chart shows
+the winrate each deck would have against three reference decks.</p>
+{{ rating_chart }}
+{% endif %}
+
+<h2>Seats</h2>
+<div class="scroll"><table>
+<tr><th>Seat</th><th>Games</th><th>Winrate</th><th>95% interval</th></tr>
+{% for s in seats %}
+<tr><td>{{ s.seat }}</td><td>{{ s.decided }}</td><td>{{ s.winrate | pct }}</td><td>{{ s.interval | ci }}</td></tr>
+{% endfor %}
+</table></div>
+{{ seat_chart }}
+<p class="legend">Seat 1 plays first in turn order, but the player who starts is chosen at random.</p>
+
+<h2>Game length and speed</h2>
+{% if rounds_chart %}
+<h3>Rounds in won games</h3>
+{{ rounds_chart }}
+<p class="legend">A round is one pass around the table; a turn is one player's turn. Mean {{ '%.1f' % mean_rounds }} rounds
+({{ '%.1f' % mean_turns }} turns).</p>
+{% endif %}
+{% if minutes_chart %}
+<h3>Minutes per game</h3>
+{{ minutes_chart }}
+{% endif %}
+{% if speed %}
+<p>Median {{ '%.1f' % speed.median_minutes }} min, longest {{ '%.1f' % speed.longest_minutes }} min.
+{{ '%.1f' % speed.worker_hours }} worker-hours of play at {{ '%.1f' % speed.games_per_worker_hour }}
+games per worker-hour (game time only, without Forge start-up).</p>
+{% endif %}
+
+<h2>Data quality</h2>
+{% for failure in failures %}
+<p class="warn">Run task {{ failure.task_index }} crashed and its games are not counted: {{ failure.error }}</p>
+{% endfor %}
+{% for deck, hashes in deck_versions.items() %}
+<p class="warn">{{ deck }} appears with {{ hashes | length }} different card lists; its results mix versions.</p>
+{% endfor %}
+{% if not failures and not deck_versions %}<p class="good">No crashed tasks and no decks changed between runs.</p>{% endif %}
+
+<h3>Seat balance</h3>
+<p>How many games each deck played in each seat; similar numbers mean the seats were rotated evenly.</p>
+<div class="scroll"><table class="heat">
+<tr><th>Deck</th>{% for n in range(1, seat_count + 1) %}<th>Seat {{ n }}</th>{% endfor %}</tr>
+{% for deck, counts in balance.items() %}
+<tr><td>{{ label(deck) }}</td>{% for n in counts %}<td style="--v: {{ n / balance_max if balance_max else 0 }}">{{ n }}</td>{% endfor %}</tr>
+{% endfor %}
+</table></div>
+
+{% if ai_weak_notes %}
+<h3>Cards Forge says its AI plays badly</h3>
+<ul>{% for note in ai_weak_notes %}<li>{{ note }}</li>{% endfor %}</ul>
+<p class="legend">These cards are flagged in Forge's card scripts. The decks are probably stronger
+in human hands than in these results.</p>
+{% endif %}
+
+<h2>Appendix</h2>
+{% for run in runs %}
+<details><summary>{{ run.info.name }} ({{ run.kind }}, {{ run.games }} games)</summary>
+<p>Run id <code>{{ run.info.run_id }}</code>, Forge {{ run.info.forge_version }}, started
+{{ run.info.created_at }}.</p>
+<table><tr><th>Deck</th><th>Card list fingerprint</th></tr>
+{% for deck, h in run.info.deck_hashes.items() %}<tr><td>{{ deck }}</td><td><code>{{ h }}</code></td></tr>{% endfor %}
+</table>
+<p>Job settings:</p><pre><code>{{ run.info.job_json }}</code></pre>
+</details>
+{% endfor %}
+</main>
+</body>
+</html>

@@ -11,25 +11,30 @@ from commander_sim.config import load_job
 from commander_sim.decks.cli import all_valid, check_decks, decks_app, load_index
 from commander_sim.decks.dck_format import read_dck
 from commander_sim.decks.model import deck_hash
+from commander_sim.decks.playgroup import DEFAULT_PLAYGROUP_FILE, load_owners
 from commander_sim.forge.install import DEFAULT_VENDOR_DIR, PINNED_RELEASE, install_forge
 from commander_sim.forge.invoke import SimRequest, run_sim
 from commander_sim.forge.output import Outcome, SimOutput
+from commander_sim.report.cli import report
+from commander_sim.report.render import write_report
 from commander_sim.runner.executor import run_job
 from commander_sim.runner.plan import balance_warnings
 from commander_sim.runner.workers import workers_for
 from commander_sim.stats.cli import compare, deck_table, merge, stats
 from commander_sim.stats.winrates import deck_stats
+from commander_sim.storage.load import load_databases
 from commander_sim.storage.results import ResultStore
 
 app = typer.Typer(no_args_is_help=True, help="Headless Forge Commander simulation harness.")
 forge_app = typer.Typer(no_args_is_help=True, help="Manage the local Forge installation.")
 app.add_typer(forge_app, name="forge")
 app.add_typer(decks_app, name="decks")
-for command in (stats, compare, merge):
+for command in (stats, compare, merge, report):
     app.command()(command)
 
 DEFAULT_RUNS_DIR = Path("runs")
 RESULTS_FILE = "results.sqlite"
+REPORT_FILE = "report.html"
 
 
 @forge_app.command("setup")
@@ -95,6 +100,12 @@ def run(
         for task_index, error in store.failed_errors(run_id):
             typer.secho(f"  task {task_index} failed: {error}", fg=typer.colors.RED)
         Console().print(deck_table(deck_stats(store.read_games()), {}))
+        report_path = write_report(
+            load_databases([run_dir / RESULTS_FILE]),
+            load_owners(DEFAULT_PLAYGROUP_FILE),
+            run_dir / REPORT_FILE,
+        )
+        typer.echo(f"Report: {report_path}")
     except KeyboardInterrupt:
         typer.secho("Interrupted. Run the same command again to resume.", fg=typer.colors.YELLOW)
         raise typer.Exit(130) from None

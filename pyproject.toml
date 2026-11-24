@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Headless Forge Commander simulation harness for decklist evaluation"
 requires-python = ">=3.11"
 dependencies = [
+    "jinja2>=3.1",
     "numpy>=2.4.6",
     "platformdirs>=4",
     "psutil>=7.2.2",

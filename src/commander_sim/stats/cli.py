@@ -1,6 +1,5 @@
 """`stats`, `compare` and `merge` commands."""
 
-from collections import defaultdict
 from pathlib import Path
 
 import typer
@@ -9,24 +8,19 @@ from rich.table import Table
 
 from commander_sim.decks.playgroup import DEFAULT_PLAYGROUP_FILE, load_owners
 from commander_sim.stats.compare import compare_decks
+from commander_sim.stats.format import (
+    DISCLAIMER,
+    ai_weakness_notes,
+    deck_label,
+    interval_text,
+    percent,
+)
 from commander_sim.stats.ratings import fit_ratings
 from commander_sim.stats.winrates import DeckStats, deck_stats, deck_versions, seat_stats
+from commander_sim.storage.load import DatabaseError, LoadedResults, load_databases
 from commander_sim.storage.results import GameRecord, ResultStore, RunInfo, RunMismatchError
 
-DISCLAIMER = (
-    "Results measure each deck as piloted by the Forge AI, which is heuristic: it plays aggro and "
-    "midrange best and most combo decks badly."
-)
-
 console = Console()
-
-
-def _percent(value: float) -> str:
-    return f"{value * 100:.1f}%"
-
-
-def _interval(interval: tuple[float, float]) -> str:
-    return f"{_percent(interval[0])} - {_percent(interval[1])}"
 
 
 def _win_length(stats: DeckStats) -> str:
@@ -35,28 +29,11 @@ def _win_length(stats: DeckStats) -> str:
     return f"{stats.mean_win_turn:.1f} / {stats.mean_win_rounds:.1f}"
 
 
-def _label(deck: str, owners: dict[str, str]) -> str:
-    name = deck.removesuffix(".dck")
-    return f"{name} ({owners[deck]})" if deck in owners else name
-
-
-def load_results(paths: list[Path]) -> tuple[list[RunInfo], list[GameRecord]]:
-    """Read every run and game from the given databases; the same run twice is an error."""
-    runs: list[RunInfo] = []
-    games: list[GameRecord] = []
-    for path in paths:
-        if not path.is_file():
-            raise typer.BadParameter(f"{path} does not exist")
-        store = ResultStore(path)
-        try:
-            runs += store.read_runs()
-            games += store.read_games()
-        finally:
-            store.close()
-    ids = [run.run_id for run in runs]
-    if len(ids) != len(set(ids)):
-        raise typer.BadParameter("The same run appears in more than one database")
-    return runs, games
+def load_results(paths: list[Path]) -> LoadedResults:
+    try:
+        return load_databases(paths)
+    except DatabaseError as error:
+        raise typer.BadParameter(str(error)) from None
 
 
 def deck_table(stats: list[DeckStats], owners: dict[str, str]) -> Table:
@@ -71,27 +48,15 @@ def deck_table(stats: list[DeckStats], owners: dict[str, str]) -> Table:
     )
     for s in stats:
         table.add_row(
-            _label(s.deck, owners),
+            deck_label(s.deck, owners),
             str(s.decided),
             str(s.wins),
-            f"{_percent(s.winrate)}  [{_interval(s.interval)}]",
+            f"{percent(s.winrate)}  [{interval_text(s.interval)}]",
             _win_length(s),
-            f"{s.timeouts} ({_percent(s.timeout_rate)})",
+            f"{s.timeouts} ({percent(s.timeout_rate)})",
             str(s.crashes),
         )
     return table
-
-
-def ai_weakness_notes(runs: list[RunInfo], owners: dict[str, str]) -> list[str]:
-    weak: dict[str, set[str]] = defaultdict(set)
-    for run in runs:
-        for deck, cards in run.ai_weak_cards.items():
-            weak[deck].update(cards)
-    return [
-        f"{_label(deck, owners)}: {', '.join(sorted(cards))}"
-        for deck, cards in sorted(weak.items())
-        if cards
-    ]
 
 
 def print_footer(runs: list[RunInfo], games: list[GameRecord], owners: dict[str, str]) -> None:
@@ -117,7 +82,8 @@ def stats(
     bootstrap: int = typer.Option(200, help="Bootstrap resamples for rating intervals."),
 ) -> None:
     """Winrates (with 95% intervals), seat winrates and ratings for one or more run databases."""
-    runs, games = load_results(databases)
+    results = load_results(databases)
+    runs, games = results.runs, results.games
     owners = load_owners(playgroup)
     if not games:
         raise typer.BadParameter("No games stored yet")
@@ -126,16 +92,16 @@ def stats(
     seat_table = Table("Seat", "Games", "Winrate (95% CI)")
     for s in seat_stats(games):
         seat_table.add_row(
-            str(s.seat), str(s.decided), f"{_percent(s.winrate)}  [{_interval(s.interval)}]"
+            str(s.seat), str(s.decided), f"{percent(s.winrate)}  [{interval_text(s.interval)}]"
         )
     console.print(seat_table)
 
     ratings_table = Table("Deck", "Strength", "Expected winrate vs 3 reference decks (95% CI)")
     for r in fit_ratings(games, bootstrap=bootstrap):
         ratings_table.add_row(
-            _label(r.deck, owners),
+            deck_label(r.deck, owners),
             f"{r.strength:.2f}",
-            f"{_percent(r.expected_winrate)}  [{_interval(r.interval)}]",
+            f"{percent(r.expected_winrate)}  [{interval_text(r.interval)}]",
         )
     console.print(ratings_table)
     print_footer(runs, games, owners)
@@ -148,7 +114,8 @@ def compare(
     playgroup: Path = DEFAULT_PLAYGROUP_FILE,
 ) -> None:
     """Compare two decks' winrates, with a warning if the sample or the fields do not allow it."""
-    runs, games = load_results(databases)
+    results = load_results(databases)
+    runs, games = results.runs, results.games
     try:
         result = compare_decks(games, a, b)
     except ValueError as error:

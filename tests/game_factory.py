@@ -15,3 +15,16 @@ def make_game(
     outcome = outcome or (Outcome.WIN if winner_seat else Outcome.TIMEOUT)
     seats = tuple(Seat(d, (hashes or {}).get(d, f"h-{d}"), Pilot.FORGE_AI) for d in decks)
     return GameRecord("run", 0, 1, outcome, winner_seat, 20, 5, 1000, seats)
+
+
+FIELD = ("x", "y", "z")
+
+
+def games_against_field(variant: str, wins: int, games: int) -> list[GameRecord]:
+    """`games` games of `variant` against FIELD, rotated through the seats; the first `wins` win."""
+    out = []
+    for i in range(games):
+        shift = i % 4
+        seating = (*FIELD[:shift], variant, *FIELD[shift:])
+        out.append(make_game(seating, shift + 1 if i < wins else (shift + 1) % 4 + 1))
+    return out
