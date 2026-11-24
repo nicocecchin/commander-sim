@@ -8,6 +8,7 @@ import json
 import sqlite3
 import uuid
 from collections.abc import Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -317,3 +318,11 @@ class ResultStore:
                     ],
                 )
         return incoming
+
+
+def snapshot_database(source: Path, target: Path) -> None:
+    """Copy a results database consistently, even while a run is writing to it."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.unlink(missing_ok=True)
+    with closing(sqlite3.connect(source)) as live, closing(sqlite3.connect(target)) as copy:
+        live.backup(copy)

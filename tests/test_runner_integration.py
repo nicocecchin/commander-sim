@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from commander_sim.config import JobSpec
+from commander_sim.config import JobSpec, portable_job_json
 from commander_sim.forge.install import PINNED_RELEASE
 from commander_sim.forge.invoke import SimRequest, run_sim
 from commander_sim.forge.output import Outcome, SimOutput
@@ -35,7 +35,7 @@ def test_two_parallel_tasks_are_stored(tmp_path: Path):
 
     store = ResultStore(tmp_path / "results.sqlite")
     hashes = {deck: f"hash-{deck}" for deck in spec.deck_files}
-    run_id = store.init_run(spec.name, spec.model_dump_json(), PINNED_RELEASE.version, hashes, {})
+    run_id = store.init_run(spec.name, portable_job_json(spec), PINNED_RELEASE.version, hashes, {})
     run_job(spec, store, run_id, hashes, tmp_path, simulate, workers=2)
 
     assert store.completed_tasks(run_id) == {0, 1}

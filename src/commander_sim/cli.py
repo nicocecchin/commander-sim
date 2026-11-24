@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeRemainingColumn
 
-from commander_sim.config import load_job
+from commander_sim.config import load_job, portable_job_json
 from commander_sim.decks.cli import all_valid, check_decks, decks_app, load_index
 from commander_sim.decks.dck_format import read_dck
 from commander_sim.decks.model import deck_hash
@@ -15,13 +15,16 @@ from commander_sim.decks.playgroup import DEFAULT_PLAYGROUP_FILE, load_owners
 from commander_sim.forge.install import DEFAULT_VENDOR_DIR, PINNED_RELEASE, install_forge
 from commander_sim.forge.invoke import SimRequest, run_sim
 from commander_sim.forge.output import Outcome, SimOutput
+from commander_sim.remote.cli import remote_app
 from commander_sim.report.cli import report
 from commander_sim.report.render import write_report
 from commander_sim.runner.executor import run_job
 from commander_sim.runner.plan import balance_warnings
+from commander_sim.runner.signals import stop_on_sigterm
 from commander_sim.runner.workers import workers_for
 from commander_sim.stats.cli import compare, deck_table, merge, stats
 from commander_sim.stats.winrates import deck_stats
+from commander_sim.storage.cli import progress, snapshot
 from commander_sim.storage.load import load_databases
 from commander_sim.storage.results import ResultStore
 
@@ -29,7 +32,8 @@ app = typer.Typer(no_args_is_help=True, help="Headless Forge Commander simulatio
 forge_app = typer.Typer(no_args_is_help=True, help="Manage the local Forge installation.")
 app.add_typer(forge_app, name="forge")
 app.add_typer(decks_app, name="decks")
-for command in (stats, compare, merge, report):
+app.add_typer(remote_app, name="remote")
+for command in (stats, compare, merge, report, snapshot, progress):
     app.command()(command)
 
 DEFAULT_RUNS_DIR = Path("runs")
@@ -78,36 +82,41 @@ def run(
     def simulate(request: SimRequest, home: Path, cancel: threading.Event) -> SimOutput:
         return run_sim(forge_dir, request, home, cancel)
 
-    store = ResultStore(run_dir / RESULTS_FILE)
-    try:
-        run_id = store.init_run(
-            spec.name, spec.model_dump_json(), forge_version, deck_hashes, ai_weak
-        )
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeRemainingColumn(),
-        ) as progress:
-            bar = progress.add_task("games", total=spec.games)
+    with stop_on_sigterm():
+        store = ResultStore(run_dir / RESULTS_FILE)
+        try:
+            run_id = store.init_run(
+                spec.name, portable_job_json(spec), forge_version, deck_hashes, ai_weak
+            )
+            with Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                bar = progress.add_task("games", total=spec.games)
 
-            def update(counts: dict[Outcome, int]) -> None:
-                progress.update(bar, completed=sum(counts.values()), description=_describe(counts))
+                def update(counts: dict[Outcome, int]) -> None:
+                    progress.update(
+                        bar, completed=sum(counts.values()), description=_describe(counts)
+                    )
 
-            update(store.outcome_counts(run_id))
-            run_job(spec, store, run_id, deck_hashes, run_dir, simulate, workers, update)
-        typer.echo(f"Outcomes: {_describe(store.outcome_counts(run_id))}")
-        for task_index, error in store.failed_errors(run_id):
-            typer.secho(f"  task {task_index} failed: {error}", fg=typer.colors.RED)
-        Console().print(deck_table(deck_stats(store.read_games()), {}))
-        report_path = write_report(
-            load_databases([run_dir / RESULTS_FILE]),
-            load_owners(DEFAULT_PLAYGROUP_FILE),
-            run_dir / REPORT_FILE,
-        )
-        typer.echo(f"Report: {report_path}")
-    except KeyboardInterrupt:
-        typer.secho("Interrupted. Run the same command again to resume.", fg=typer.colors.YELLOW)
-        raise typer.Exit(130) from None
-    finally:
-        store.close()
+                update(store.outcome_counts(run_id))
+                run_job(spec, store, run_id, deck_hashes, run_dir, simulate, workers, update)
+            typer.echo(f"Outcomes: {_describe(store.outcome_counts(run_id))}")
+            for task_index, error in store.failed_errors(run_id):
+                typer.secho(f"  task {task_index} failed: {error}", fg=typer.colors.RED)
+            Console().print(deck_table(deck_stats(store.read_games()), {}))
+            report_path = write_report(
+                load_databases([run_dir / RESULTS_FILE]),
+                load_owners(DEFAULT_PLAYGROUP_FILE),
+                run_dir / REPORT_FILE,
+            )
+            typer.echo(f"Report: {report_path}")
+        except KeyboardInterrupt:
+            typer.secho(
+                "Interrupted. Run the same command again to resume.", fg=typer.colors.YELLOW
+            )
+            raise typer.Exit(130) from None
+        finally:
+            store.close()

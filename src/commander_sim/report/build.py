@@ -4,9 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from statistics import mean, median
 
-from pydantic import ValidationError
-
-from commander_sim.config import ABMatchup, JobSpec
+from commander_sim.config import ABMatchup, JobSpec, job_from_portable_json
 from commander_sim.forge.output import Outcome
 from commander_sim.stats.compare import Comparison, compare_decks
 from commander_sim.stats.format import ai_weakness_notes
@@ -83,8 +81,8 @@ class ReportData:
 
 def _parse_job(run: RunInfo) -> JobSpec | None:
     try:
-        return JobSpec.model_validate_json(run.job_json)
-    except ValidationError:
+        return job_from_portable_json(run.job_json)
+    except ValueError:
         return None
 
 

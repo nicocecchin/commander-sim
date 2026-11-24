@@ -272,3 +272,30 @@ with Jinja2. Autoescaping is switched on explicitly because Jinja's default only
 templates and ours is `.j2`; a test with a hostile deck name guards this. The report states the
 Forge-AI disclaimer at the top, shows timeouts and crashes separately, and repeats every `compare`
 warning in the A/B section.
+
+## Remote runs (milestone 6)
+
+- **Run box:** a shared Linux machine reached over ssh. AMD Ryzen 9 5900X
+  with 20 threads visible, 60 GB RAM of which about 22 GB were in use by other people, Ubuntu
+  26.04, Docker 29.9 usable without sudo, no Java or uv installed. The disk was 97% full
+  (69 GB free); the image is 1.7 GB.
+- Everything runs in Docker (`Dockerfile`: Temurin 21 JRE, uv-managed Python under `/opt/python`,
+  the package in `/app/.venv`, Forge pinned under `/app/vendor`). The container runs as the
+  remote user's uid so result files belong to that user; Forge writes only to the per-worker
+  `user.home` under `/work`, so the image itself stays read-only.
+- Inside a container, `os.cpu_count()` and psutil see the **host's** CPUs and RAM, not the
+  container limits, so the worker count must be capped explicitly (`remote run --workers`, which
+  sets `workers.max` in the bundled job).
+- Stored jobs exclude the deck folder and worker limits, so a run folder resumes after moving
+  between machines.
+- A run treats SIGTERM like Ctrl+C. `docker stop` therefore kills the Forge processes, keeps every
+  finished game, and exits with code 130; Docker's `on-failure` restart policy does not restart a
+  container that was stopped by hand.
+- **Recovery, tested locally in Docker** (starter decks, 2 workers): `docker stop` mid-run ->
+  exit 130, no Java process left, both finished games kept; `docker start` resumed and finished
+  all 8 games with no duplicate tasks. `docker kill -s KILL` -> exit 137 and **no automatic
+  restart**: Docker treats `kill` like `stop`, a manual action. Its `on-failure` restart covers
+  only the runner failing by itself. Forge processes that die are retried inside the run.
+  Someone stopping or killing the container, or a reboot, needs `remote run` again, which resumes
+  from the saved games; `remote status` says which case happened. Killing the container's main
+  process from the host with `kill -9` is refused (permission denied) even for the same user.

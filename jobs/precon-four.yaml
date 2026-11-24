@@ -1,0 +1,12 @@
+# The four playgroup precons the Forge AI should pilot most faithfully: creature-based
+# aggro/midrange decks with at most two cards Forge flags as badly played by its AI.
+#   counter-blitz (Player E), turtle-power (Player D), temur-roar (Player F), keen-engineering (Player A)
+# 1000 games, one game per Forge launch so a crash loses at most the games in progress.
+name: precon-four
+decks_dir: ../decks/playgroup
+matchup:
+  kind: pod
+  decks: [counter-blitz.dck, turtle-power.dck, temur-roar.dck, keen-engineering.dck]
+games: 1000
+games_per_task: 1
+seed: 1

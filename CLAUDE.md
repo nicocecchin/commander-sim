@@ -33,7 +33,7 @@ in a separate project. Keep that in mind when designing interfaces (see "Player 
 | Machine | CPU | RAM | Role |
 |---|---|---|---|
 | Dev laptop | Ryzen 5 5600H (6C/12T) | 16 GB | development, small runs |
-| Run box | Intel i9 | 64 GB | large unattended runs |
+| Run box (`pino`, shared) | AMD Ryzen 9 5900X (20 threads visible) | 60 GB | large unattended runs, in Docker |
  
 - Both run Linux. **Code must stay cross-platform** (Linux, Windows, macOS) because other players
   will eventually run it.

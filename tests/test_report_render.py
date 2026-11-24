@@ -5,7 +5,7 @@ import pytest
 from typer.testing import CliRunner
 
 from commander_sim.cli import app
-from commander_sim.config import JobSpec
+from commander_sim.config import JobSpec, portable_job_json
 from commander_sim.forge.output import GameResult, Outcome
 from commander_sim.report.build import build_report_data
 from commander_sim.report.render import render_report, write_report
@@ -20,7 +20,7 @@ def job_json(matchup: dict) -> str:
     spec = JobSpec.model_validate(
         {"name": "job", "decks_dir": ".", "matchup": matchup, "games": 8, "games_per_task": 4}
     )
-    return spec.model_dump_json()
+    return portable_job_json(spec)
 
 
 def run_info(job: str, weak=None) -> RunInfo:

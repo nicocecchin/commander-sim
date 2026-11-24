@@ -1,5 +1,6 @@
 """Job specification: everything needed to describe a run besides the deck files."""
 
+import json
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -9,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from commander_sim.forge.invoke import DEFAULT_HEAP_MB, DEFAULT_TIMEOUT_SECONDS
 
 POD_SIZE = 4
+# Settings that depend on the machine running the job, not on what the job measures.
+_MACHINE_SETTINGS = {"decks_dir", "workers"}
 
 
 class _Strict(BaseModel):
@@ -102,3 +105,17 @@ def load_job(path: Path) -> JobSpec:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     spec = JobSpec.model_validate(raw)
     return spec.model_copy(update={"decks_dir": (path.parent / spec.decks_dir).resolve()})
+
+
+def portable_job_json(spec: JobSpec) -> str:
+    """The job as stored with its results: without machine settings (deck folder, worker
+    limits), so a run folder can move to another machine and still resume there."""
+    return spec.model_dump_json(exclude=_MACHINE_SETTINGS)
+
+
+def job_from_portable_json(text: str) -> JobSpec:
+    """Read a job stored by `portable_job_json`. Its deck folder is unknown and set to '.'.
+
+    Raises ValueError if the text is not a valid job.
+    """
+    return JobSpec.model_validate({**json.loads(text), "decks_dir": "."})

@@ -105,6 +105,36 @@ uv run commander-sim merge all.sqlite runs/one/results.sqlite runs/two/results.s
 - `merge` and `stats` accept several databases (for example runs from the run box); a run
   cannot appear twice.
 
+## Running on another machine (run box)
+
+Long runs go to a remote Linux machine with Docker, so nothing has to be installed there
+besides Docker. Commands run from your laptop over `ssh`/`scp` (key login must already work):
+
+```bash
+export COMMANDER_SIM_HOST=user@runbox.example.org     # or pass --host; a ~/.ssh/config alias works
+uv run commander-sim remote run jobs/precon-four.yaml --workers 10
+uv run commander-sim remote status precon-four
+uv run commander-sim remote fetch precon-four           # snapshot + report into runs/precon-four@runbox/
+uv run commander-sim remote stop precon-four            # clean stop; `remote run` again resumes
+```
+
+- `remote run` ships the **committed** code (it refuses uncommitted changes), builds the image
+  `commander-sim:<commit>` on the remote if it is not there yet, uploads a bundle (job file and
+  its decks) and starts a detached container. Decks travel by `scp`, never through git.
+- **Checkpoints and recovery:** every finished Forge launch is saved to the run's SQLite
+  database at once, so a crash loses only the games in progress (with `games_per_task: 1`, one
+  game per worker). A Forge process that dies is retried inside the run, and if the runner
+  itself fails Docker restarts the container (up to 5 times) and it resumes. If the container
+  was stopped or killed by someone, or the machine rebooted, `remote status` says so and
+  `remote run` with the same job file resumes from the saved games.
+- `--workers` caps the Forge processes; the container also gets `workers + 1` CPUs and
+  `2 GB x workers` of memory, so the run cannot take over a shared machine.
+- `remote fetch` is safe while the job is running. Use `stats`, `compare` or `merge` on the
+  fetched database like any other.
+- Without the `remote` commands, on any machine with Docker: `docker build -t commander-sim .`,
+  put a job file and its decks in `work/bundle/`, then
+  `docker run -d -v "$PWD/work:/work" commander-sim run /work/bundle/job.yaml --runs-dir /work/runs`.
+
 ## Tests
 
 ```bash

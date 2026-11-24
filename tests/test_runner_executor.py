@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from commander_sim.config import JobSpec
+from commander_sim.config import JobSpec, portable_job_json
 from commander_sim.forge.invoke import SimCancelled, SimError, SimRequest
 from commander_sim.forge.output import GameResult, Outcome, SimOutput
 from commander_sim.runner.executor import run_job
@@ -15,7 +15,7 @@ HASHES = {deck: f"hash-{deck}" for deck in POD}
 
 
 def init_run(store: ResultStore, spec: JobSpec) -> str:
-    return store.init_run(spec.name, spec.model_dump_json(), "2.0.16", HASHES, {})
+    return store.init_run(spec.name, portable_job_json(spec), "2.0.16", HASHES, {})
 
 
 def make_spec(games: int = 8) -> JobSpec:
