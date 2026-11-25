@@ -69,7 +69,9 @@ Game Result: Game 1 ended in 87011 ms. Ai(4)-<deck> has won!
   and with `-s 7` seat 1 started under two different deck orders. So seat rotation fixes turn
   *order* but not who goes first; record the starter if it turns out to matter (*unverified* how
   the seed drives it).
-- `-s SEED` works: the same seed and decks gave the same winner and turn count twice
+- `-s SEED` works only on the same machine under similar load (see "Where the time goes": the
+  AI has wall-clock deadlines, so a slower or busier CPU changes its decisions). On one machine
+  the same seed and decks gave the same winner and turn count twice
   (also across separate `user.home` dirs). Only the wall-clock duration differs. Seeds are echoed
   in the header. Reproducibility across Forge versions is not expected.
 
@@ -307,3 +309,59 @@ warning in the A/B section.
 - Containers run with `--init`: without it Python is PID 1, which ignores SIGTERM until the run
   installs its handler, so a `docker stop` during start-up waited the full grace period and ended
   in SIGKILL (exit 137).
+
+## Where the time goes (profiled after the precon-four run)
+
+Three games of the 1000-game `precon-four` run (the median, 90th and 99th percentile by duration)
+were replayed on the dev laptop with their recorded seeds and seating, under Java Flight
+Recorder (`-XX:StartFlightRecording=settings=profile`); 24,278 CPU samples in total, stacks up to
+512 frames deep (0.4% truncated). Shares below are of CPU samples, i.e. of CPU time.
+
+**Replays are not reproductions.** None of the three replays matched the original game (for
+example winner seat 4, 46 turns, 124 s on the run box versus winner seat 2, 45 turns, 55 s on the
+laptop). Forge's AI works against wall-clock deadlines (`AiAttackController.withDeadline`, the
+"AI eval thread at timeout" limit), so the same seed on a faster, slower or busier CPU leads to
+different decisions. Seeds reproduce games only on the same machine under similar load.
+
+**Per launch (one game, laptop, 3 launches in parallel):** about 79 s wall for a 55 s game.
+- About 7 s of start-up CPU loading the card database (`CardStorageReader`, many threads).
+- About **12 s of near-idle start-up**: the main thread reads the AI *deck-generation* data
+  (`res/deckgendecks/*.dat` via `CardRelationMatrixGenerator.initializeFormat` and
+  `CardArchetypeLDAGenerator`) with unbuffered `FileInputStream` reads. Sims with explicit decks
+  never use this data; skipping it is the cheapest available speed-up (untested).
+- 2-4 s after the game (JVM exit, and here the profiler writing its file).
+- The Python harness is negligible: parsing a full game log takes 1-2.5 ms, saving a game a few ms.
+- Garbage collection paused for 1.4-2.4 s per game (about 2.5%); JIT runs on its own threads.
+
+**Inside the game** (CPU share of all samples; start-up was 3%):
+
+| Who | What it is doing | Share |
+|---|---|---|
+| AI choosing what to play | simulating combat | 54.0% |
+| | judging one candidate play | 6.6% |
+| | recomputing static effects | 5.0% |
+| | working out mana payment | 3.9% |
+| | other | 1.4% |
+| AI declaring attackers | simulating combat | 8.5% |
+| AI paying mana, carrying out plays, blocking, targets | | 5.5% |
+| Rules engine (not on behalf of the AI) | static effects, state-based actions, resolving, triggers | 12.0% |
+
+So about **87% of in-game CPU is AI decision-making and 13% is the rules engine**, and **two
+thirds of all in-game CPU is the AI simulating combat**. The combat simulations requested while
+choosing a play come from:
+- `ComputerUtilCard.shouldPumpCard` -> `doesCreatureAttackAI` / `doesSpecifiedCreatureAttackAI`
+  (56%): to decide whether to cast a pump effect, the AI predicts the whole next combat, per
+  candidate creature and per candidate effect, on every priority pass;
+- `ChangeZoneAi.hiddenOriginCanPlayAI` (23%): judging search/fetch abilities;
+- `ComputerUtil.evaluateBoardPositionChanged` (16%) and `aiLifeInDanger` (3%).
+The simulation itself is mostly `AiAttackController.declareAttackers`,
+`choosePreferredDefenderPlayer` and `ComputerUtil.predictNextCombatsRemainingLife`. The leaf
+methods burning CPU are card queries (`CardProperty.cardHasProperty`, `CardType.isSaga`,
+`CardState.getReplacementEffects`, `FSnapshotTable.size`): the board is re-queried from scratch.
+
+**Per round:** the replayed median game took 55 s over 12 rounds, about 4.6 s per round, of
+which about 4 s is AI decisions (3 s of it combat simulation) and 0.6 s rules engine. On the run
+box the same decks averaged about 9.5 s per round (median game 124 s, 13 rounds) with 12
+workers on 10 enabled cores: all three originals were 2.2-2.6x slower than their laptop replays,
+which suggests the run box was CPU-contended at 12 workers (SMT siblings, JIT and GC threads).
+Measure throughput at several worker counts before the next big run.
